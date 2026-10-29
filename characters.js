@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 
 const BASE = 'assets/characters/';
 const V3 = THREE.Vector3, QT = THREE.Quaternion;
@@ -70,20 +71,24 @@ uniform vec4 uLm0;   // ankleY, kneeY, hipY, pelvisY
 uniform vec4 uLm1;   // chestY, neckY, shoulderX, elbowX
 uniform vec4 uLm2;   // wristX, -, -, -
 uniform vec4 uStyle; // top (0 none,1 tank,2 tee,3 long), bottom (0 none,1 shorts,2 knee,3 long), shoes (0 bare,1 sandal,2 sneaker), hood
+uniform vec4 uTrim;  // rgb = trim colour on the top's neck/arm openings, a = 1 to draw it
 float cs(float e, float x) { return smoothstep(e - 0.006, e + 0.006, x); }
-void clothMasks(vec3 p, out float top, out float bot, out float shoe) {
+// top garment mask; k shrinks the openings (neck, sleeves/armholes, straps) to find the trim band
+float topMask(vec3 p, float k) {
   float ax = abs(p.x);
+  float sleeve = (uStyle.x < 1.5 ? uLm1.z * 0.95 : (uStyle.x < 2.5 ? mix(uLm1.z, uLm1.w, 0.45) + 0.02 : uLm2.x - 0.035)) - k;
+  float hem = uLm0.w - 0.06, neck = uLm1.y - 0.03 + uStyle.w * 0.05 - k;
+  float t = cs(hem, p.y) * (1.0 - cs(neck, p.y)) * (1.0 - cs(sleeve, ax));
+  float scoop = (uStyle.x < 1.5 ? 0.12 : 0.055) * (1.0 - uStyle.w) + k;
+  t *= 1.0 - cs(0.0, p.z) * cs(neck - scoop + ax * 0.6, p.y);
+  if (uStyle.x < 1.5) {   // tank: torso only below the armpits, two straps above
+    float upper = cs(uLm1.y - 0.14 - k, p.y), strap = 1.0 - cs(0.032 - k, abs(ax - uLm1.z * 0.45)), torso = 1.0 - cs(uLm1.z * 1.02 - k, ax);
+    t *= mix(torso, strap, upper); }
+  return t;
+}
+void clothMasks(vec3 p, out float top, out float bot, out float shoe) {
   top = 0.0;
-  if (uStyle.x > 0.5) {
-    float sleeve = uStyle.x < 1.5 ? uLm1.z * 0.95 : (uStyle.x < 2.5 ? mix(uLm1.z, uLm1.w, 0.45) + 0.02 : uLm2.x - 0.035);
-    float hem = uLm0.w - 0.06, neck = uLm1.y - 0.03 + uStyle.w * 0.05;
-    top = cs(hem, p.y) * (1.0 - cs(neck, p.y)) * (1.0 - cs(sleeve, ax));
-    float scoop = (uStyle.x < 1.5 ? 0.12 : 0.055) * (1.0 - uStyle.w);
-    top *= 1.0 - cs(0.0, p.z) * cs(neck - scoop + ax * 0.6, p.y);
-    if (uStyle.x < 1.5) {   // tank: torso only below the armpits, two straps above
-      float upper = cs(uLm1.y - 0.14, p.y), strap = 1.0 - cs(0.032, abs(ax - uLm1.z * 0.45)), torso = 1.0 - cs(uLm1.z * 1.02, ax);
-      top *= mix(torso, strap, upper); }
-  }
+  if (uStyle.x > 0.5) top = topMask(p, 0.0);
   bot = 0.0;
   if (uStyle.y > 0.5) {
     float end = uStyle.y < 1.5 ? uLm0.y + 0.12 : (uStyle.y < 2.5 ? uLm0.y - 0.07 : uLm0.x + 0.04);
@@ -97,6 +102,7 @@ function bodyMaterial(proto, lm, app) {
   const u = {
     uLm0: { value: lm[0] }, uLm1: { value: lm[1] }, uLm2: { value: lm[2] },
     uStyle: { value: new THREE.Vector4(app.top, app.bottom, app.shoes, app.hood) },
+    uTrim: { value: new THREE.Vector4(...(app.trimCol ? new THREE.Color(app.trimCol).toArray() : [0, 0, 0]), app.trimCol ? 1 : 0) },
     uSkin: { value: new THREE.Color().setRGB(...app.skinTint) }, uTop: { value: new THREE.Color(app.topCol) },
     uBot: { value: new THREE.Color(app.botCol) }, uShoe: { value: new THREE.Color(app.shoeCol) }, uUnder: { value: new THREE.Color(app.underCol) },
   };
@@ -116,13 +122,21 @@ function bodyMaterial(proto, lm, app) {
           float lum = dot(base, vec3(0.3, 0.59, 0.11));
           float shade = clamp(mix(1.0, lum / 0.2, 0.5), 0.6, 1.2), ushade = clamp(mix(1.0, lum / 0.38, 0.6), 0.55, 1.15);
           vec3 col = mix(base * uSkin, uUnder * ushade, under);
-          col = mix(col, uBot * shade, cBot); col = mix(col, uTop * shade, cTop); col = mix(col, uShoe * shade, cShoe);
+          vec3 botCol = uBot * shade;
+          if (uTrim.w > 0.5) botCol *= 0.94 + 0.12 * fract(sin(dot(floor(vBindPos.xy * 300.0), vec2(12.9898, 78.233))) * 43758.5453);   // denim-style speckle on the trimmed outfit
+          col = mix(col, botCol, cBot); col = mix(col, uTop * shade, cTop);
+          if (uTrim.w > 0.5 && cTop > 0.0) col = mix(col, uTrim.rgb * shade, clamp(cTop - topMask(vBindPos, 0.018), 0.0, 1.0));
+          col = mix(col, uShoe * shade, cShoe);
+          if (uTrim.w > 0.5) {   // the player's outfit: white crew socks above the shoes, white rubber soles
+            float sock = cs(uLm0.x + 0.03, vBindPos.y) * (1.0 - cs(uLm0.x + 0.12, vBindPos.y)) * (1.0 - cBot);
+            col = mix(col, vec3(0.9, 0.9, 0.88) * shade, sock);
+            col = mix(col, vec3(0.93, 0.92, 0.88) * shade, cShoe * (1.0 - cs(0.028, vBindPos.y))); }
           diffuseColor.rgb = col; }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.92, max(cTop, cBot)); roughnessFactor = mix(roughnessFactor, 0.6, cShoe);`)
       .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - 0.85 * cAny);');
   };
-  m.customProgramCacheKey = () => 'vbCharBody';
+  m.customProgramCacheKey = () => 'vbCharBody2';
   return m;
 }
 
@@ -157,7 +171,7 @@ function makeAppearance(sex, i) {
 export async function createCharacters(ctx) {
   const { renderer, scene, camera, chunks, skater, S } = ctx;
   const Q = Object.assign({ rigsPerSex: 30, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260,
-    cyclists: 10, dogs: 6, appearances: 20 }, ctx.Q || {});
+    cyclists: 10, dogs: 6, appearances: 20, skaterDecimate: 0.55 }, ctx.Q || {});
   const loader = new GLTFLoader(), texLoader = new THREE.TextureLoader();
   const load = (u) => loader.loadAsync(BASE + u);
   const HAIR_FILES = ['Hair_Buzzed', 'Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale', 'Hair_Beard'];
@@ -248,7 +262,7 @@ export async function createCharacters(ctx) {
     a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol);
     a.id = APPS[sex].length; APPS[sex].push(a);
   }
-  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 1, shoes: 2, hood: 0, topCol: '#c9302c', botCol: '#2b3a55', shoeCol: '#1a1a1a', underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false });
+  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 2, shoes: 2, hood: 0, topCol: '#fdb927', trimCol: '#552583', botCol: '#4a6c9b', shoeCol: '#1a1a1a', underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false });
   skaterApp.skinTex = BODY.M.skinTex[0]; skaterApp.mat = bodyMaterial(BODY.M.protoMat, BODY.M.lm, skaterApp); skaterApp.hairMat = hairMat(skaterApp.hair, skaterApp.hairCol); skaterApp.browMat = browMat('M', skaterApp.hairCol);
 
   // ---------------- props shared by rigs ----------------
@@ -389,13 +403,33 @@ export async function createCharacters(ctx) {
   const towelGeo = new THREE.BoxGeometry(0.85, 0.012, 1.85).translate(0, 0.006, 0);
   const speakerGeo = new THREE.BoxGeometry(0.34, 0.5, 0.3).translate(0, 0.25, 0), speakerMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.6 });
   const hatGeo = new THREE.CylinderGeometry(0.16, 0.13, 0.08, 14, 1, true).translate(0, 0.04, 0), hatMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.9, side: THREE.DoubleSide });
+  // seated people (beggar, smoker, drummer) sit on an upturned bucket or a milk crate
+  const SIT_KINDS = new Set(['sit', 'beg', 'smoke', 'drum']), SEAT = 0.4;
+  const crateGeo = mergeGeometries([new THREE.BoxGeometry(0.36, 0.03, 0.32).translate(0, SEAT - 0.015, 0), ...[-1, 1].flatMap((s) => [new THREE.BoxGeometry(0.36, SEAT - 0.03, 0.02).translate(0, (SEAT - 0.03) / 2, s * 0.15), new THREE.BoxGeometry(0.02, SEAT - 0.03, 0.32).translate(s * 0.17, (SEAT - 0.03) / 2, 0)])]);
+  const bucketGeo = new THREE.CylinderGeometry(0.135, 0.15, SEAT, 16).translate(0, SEAT / 2, 0);
+  const seatMats = ['#1f5fb8', '#c8302c', '#202020', '#e8862a', '#f4f4f2'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
+  const drumGeo = new THREE.LatheGeometry([[0.09, 0], [0.12, 0.04], [0.075, 0.2], [0.07, 0.3], [0.13, 0.46], [0.17, 0.56], [0.175, 0.6], [0, 0.6]].map(([x, y]) => new THREE.Vector2(x, y)), 18);
+  const drumMats = ['#7a4a26', '#5a3418', '#9a6232'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
+  const cupGeo = new THREE.CylinderGeometry(0.045, 0.036, 0.11, 12, 1, true).translate(0, 0.055, 0), cupMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.8, side: THREE.DoubleSide });
+  const cigGeo = new THREE.CylinderGeometry(0.0045, 0.0045, 0.075, 6).rotateX(Math.PI / 2), cigMat = new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.7, emissive: 0xff5a10, emissiveIntensity: 0 });
+  const signTex = ['ANYTHING|HELPS', 'HUNGRY|GOD BLESS'].map((txt) => { const c = document.createElement('canvas'); c.width = 256; c.height = 184; const x = c.getContext('2d');
+    x.fillStyle = '#b48a5a'; x.fillRect(0, 0, 256, 184); for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(80,50,20,${Math.random() * 0.12})`; x.fillRect(Math.random() * 256, Math.random() * 184, 3, 3); }
+    x.fillStyle = '#1a1410'; x.font = 'bold 40px "Marker Felt", "Comic Sans MS", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    txt.split('|').forEach((line, i) => { x.save(); x.translate(128, 60 + i * 64); x.rotate((Math.random() - 0.5) * 0.08); x.fillText(line, 0, 0); x.restore(); });
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; });
+  const signGeo = new THREE.PlaneGeometry(0.5, 0.36).translate(0, 0.18, 0), signMats = signTex.map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.95, side: THREE.DoubleSide }));
   class Prop { constructor() { this.towel = new THREE.Mesh(towelGeo, towelMats[0]); this.speaker = new THREE.Mesh(speakerGeo, speakerMat); this.hat = new THREE.Mesh(hatGeo, hatMat);
-    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat); this.g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
-  const PROPS = []; for (let i = 0; i < 14; i++) PROPS.push(new Prop());
+    this.crate = new THREE.Mesh(crateGeo, seatMats[0]); this.bucket = new THREE.Mesh(bucketGeo, seatMats[3]); this.drum = new THREE.Mesh(drumGeo, drumMats[0]);
+    this.cup = new THREE.Mesh(cupGeo, cupMat); this.sign = new THREE.Mesh(signGeo, signMats[0]); this.cig = new THREE.Mesh(cigGeo, cigMat);
+    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.crate, this.bucket, this.drum, this.cup, this.sign, this.cig);
+    this.g.traverse((m) => { if (m.isMesh) { m.castShadow = m !== this.cig; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
+  const PROPS = []; for (let i = 0; i < 30; i++) PROPS.push(new Prop());
 
   // ---------------- agents ----------------
   // Walkers live in a global pool spanning ~300 m around the camera; stations come from chunk layouts.
   const WALKERS = [];
+  const LANE_CLEAR = Q.laneClear ?? 4.3;   // half-width of the play lanes kept free of ambient people
+  const GAME_AGENTS = [];                  // pedestrians placed and moved by game.js (obstacles); rigged before anyone else
   R = mulberry32(31337);
   function newAgent(kind, sex) { const s = sex || (chance(0.5) ? 'M' : 'F'); const app = pick(APPS[s]);
     // the free bodies are 'Superhero' builds: narrow them in x/z for everyday proportions
@@ -415,8 +449,8 @@ export async function createCharacters(ctx) {
   const CYCLISTS = []; for (let i = 0; i < Q.cyclists; i++) { const a = newAgent('cycle'); a.speed = rand(3.8, 5.8); a.clip = CLIP.drive; a.crank = rand(0, 6.28); a.bikeId = i % BIKES.length; CYCLISTS.push(a); }
   function respawn(a, zRef, init) {
     if (a.kind === 'cycle') { a.dir = chance(0.5) ? 1 : -1; a.x = a.dir > 0 ? rand(-6.6, -6.1) : rand(-5.6, -5.1); a.z = init ? zRef - rand(-10, 280) : (a.dir > 0 ? zRef - rand(220, 280) : zRef - rand(200, 280)); return; }
-    const zone = R(); a.x = zone < 0.72 ? rand(-4.3, 8.6) : (zone < 0.86 ? rand(-14, -8.2) : rand(4.8, 8.8));
-    if (Math.abs(a.x - S.x) < 1.3) a.x += a.x > S.x ? 1.4 : -1.4;
+    // ambient walkers stay off the four play lanes (|x| < LANE_CLEAR): right-hand strip, left pavers, or the grass
+    const zone = R(); a.x = zone < 0.43 ? rand(LANE_CLEAR + 0.6, 8.6) : (zone < 0.86 ? -rand(LANE_CLEAR + 0.6, 7.2) : rand(-14, -8.2));   // right strip, left pavers (equal shares), grass
     a.dir = chance(0.5) ? 1 : -1; a.z = init ? zRef - rand(-10, 280) : zRef - rand(200, 290); a.stopT = rand(4, 30); a.stopFor = 0;
   }
 
@@ -426,6 +460,7 @@ export async function createCharacters(ctx) {
     R = mulberry32(st.seed); const a = newAgent(st.t, st.sex);
     a.x = st.x; a.y = st.y || 0; a.z = st.z; a.ry = st.ry || 0; a.st = st; a.scale = clamp(a.scale, 0.93, 1.0);
     if (st.t === 'sit') a.clip = chance(0.4) ? CLIP.sitTalk : CLIP.sit;
+    else if (SIT_KINDS.has(st.t)) a.clip = CLIP.sit;
     else if (st.t === 'perform') a.clip = st.act === 'dance' ? CLIP.dance : st.act === 'spell' ? CLIP.spell : CLIP.talk;
     else if (st.t === 'watch' || st.t === 'selfie') a.clip = chance(0.3) && st.t === 'watch' ? CLIP.talk : CLIP.idle;
     else if (st.t === 'lie') a.clip = CLIP.lie;
@@ -433,24 +468,67 @@ export async function createCharacters(ctx) {
     return (st.agent = a);
   }
 
+  // game-controlled pedestrians: a stride-matched walker whose x/z the game owns (a.speed is the walk speed in m/s)
+  function addGameWalker({ x, z, dir, seed, dog }) {
+    R = mulberry32(seed >>> 0); const a = newAgent('walk'); a.game = true; a.gait = 'walk'; a.clip = CLIP.walk;
+    a.ts = rand(dog ? 0.95 : 1.0, dog ? 1.1 : 1.25); a.speed = BODY[a.sex].speed[a.clip] * a.ts * a.scale; a.x = x; a.z = z; a.dir = dir; a.stopT = 1e9;
+    if (dog) a.dog = DOG_T[randi(0, 1)];   // walks on a lead just ahead of the owner, in the same lane
+    GAME_AGENTS.push(a); return a;
+  }
+  // people standing or lying still in a lane: 'selfie' (phone held up, a.ry = facing) or 'lie' (on a towel)
+  function addGameStation({ kind, x, z, ry, seed, sex }) {
+    R = mulberry32(seed >>> 0); const a = newAgent(kind, sex); a.game = true; a.x = x; a.y = 0; a.z = z; a.ry = ry; a.scale = clamp(a.scale, 0.93, 1.0);
+    a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
+    if (SIT_KINDS.has(kind)) a.y = SEAT;   // sitting on a bucket/crate on the ground
+    GAME_AGENTS.push(a); return a;
+  }
+  function removeGameWalker(a) { const i = GAME_AGENTS.indexOf(a); if (i >= 0) GAME_AGENTS.splice(i, 1); if (a.rig) releaseRig(a.rig); }
+  // game-controlled traffic crossing the boardwalk along x (dirX = ±1); the game sets a.x and a.speed each frame
+  // riders: dirX = ±1 crosses the boardwalk; dirZ = ±1 rides along a lane (+1 = toward the camera)
+  function addGameCyclist({ x, z, dirX, dirZ, seed }) {
+    R = mulberry32(seed >>> 0); const a = newAgent('cycle'); a.game = true; a.clip = CLIP.drive; a.crank = rand(0, 6.28); a.x = x; a.z = z; a.speed = 0;
+    a.yaw = dirZ ? (dirZ > 0 ? 0 : Math.PI) : (dirX > 0 ? Math.PI / 2 : -Math.PI / 2);   // rig faces +z at yaw 0
+    GAME_AGENTS.push(a); return a;
+  }
+  function addGameSkater({ x, z, dirX, dirZ, seed }) {
+    R = mulberry32(seed >>> 0); const a = newAgent('skate'); a.game = true; a.clip = CLIP.idle; a.ts = 0.6; a.x = x; a.z = z; a.speed = 0;
+    a.yaw = dirZ ? (dirZ > 0 ? Math.PI : 0) : (dirX > 0 ? -Math.PI / 2 : Math.PI / 2);   // a board group travels along -z at yaw 0
+    a.deckColor = pick([0x1d1d1f, 0x2a6fc9, 0xc9302c, 0x24a865, 0xf2cf4a]);
+    GAME_AGENTS.push(a); return a;
+  }
+
   // ---------------- skater rig (always full detail) ----------------
   const FLIP_H = 0.06;
+  // skateboard: board (pitch/yaw) > flip (roll about the deck's long axis) > deck + wheels
+  const truckMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.35, metalness: 0.85 }), wheelMat = new THREE.MeshStandardMaterial({ color: 0xf1e7c8, roughness: 0.5 }),
+    woodMat = new THREE.MeshStandardMaterial({ color: 0xb07a45, roughness: 0.7 });
+  const deckTopGeo = mergeGeometries([new THREE.BoxGeometry(0.205, 0.004, 0.56).translate(0, 0.012, 0),
+    new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
+  const deckPlyGeo = mergeGeometries([new THREE.BoxGeometry(0.2, 0.012, 0.56).translate(0, 0.004, 0),
+    new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
+  const truckGeo = mergeGeometries([-1, 1].flatMap((s) => [new THREE.BoxGeometry(0.06, 0.035, 0.05).translate(0, -0.02, s * 0.22), new THREE.CylinderGeometry(0.008, 0.008, 0.19, 6).rotateZ(Math.PI / 2).translate(0, -0.056, s * 0.22)]));
+  const wheelGeo2 = new THREE.CylinderGeometry(0.027, 0.027, 0.032, 14).rotateZ(Math.PI / 2);
+  function makeBoard(deckColor) {
+    const board = new THREE.Group(), flip = new THREE.Group(); flip.position.y = FLIP_H; board.add(flip);
+    const deck = new THREE.Group(); deck.position.y = 0.083 - FLIP_H; deck.add(new THREE.Mesh(deckTopGeo, new THREE.MeshStandardMaterial({ color: deckColor, roughness: 0.95 })), new THREE.Mesh(deckPlyGeo, woodMat), new THREE.Mesh(truckGeo, truckMat)); flip.add(deck);
+    const wheels = []; for (const s of [-1, 1]) for (const xs of [-1, 1]) { const w = new THREE.Mesh(wheelGeo2, wheelMat); w.position.set(xs * 0.085, 0.027 - FLIP_H, s * 0.22); flip.add(w); wheels.push(w); }
+    board.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    return { board, flip, deck, wheels, g: board, agent: null, inScene: false };
+  }
   const sk = new Rig('M'); sk.setApp(skaterApp); sk.setShadow(true);
-  const board = new THREE.Group(), flip = new THREE.Group(); flip.position.y = FLIP_H; board.add(flip); skater.add(board); skater.add(sk.wrap);   // board: pitch; flip: roll about the deck's long axis
-  { const deckMat = new THREE.MeshStandardMaterial({ color: 0x1d1d1f, roughness: 0.95 }), woodMat = new THREE.MeshStandardMaterial({ color: 0xb07a45, roughness: 0.7 }),
-      truckMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.35, metalness: 0.85 }), wheelMat = new THREE.MeshStandardMaterial({ color: 0xf1e7c8, roughness: 0.5 });
-    const top = mergeGeometries([new THREE.BoxGeometry(0.205, 0.004, 0.56).translate(0, 0.012, 0),
-      new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
-    const ply = mergeGeometries([new THREE.BoxGeometry(0.2, 0.012, 0.56).translate(0, 0.004, 0),
-      new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
-    const deck = new THREE.Group(); deck.position.y = 0.083; deck.add(new THREE.Mesh(top, deckMat), new THREE.Mesh(ply, woodMat));
-    const trucks = mergeGeometries([-1, 1].flatMap((s) => [new THREE.BoxGeometry(0.06, 0.035, 0.05).translate(0, -0.02, s * 0.22), new THREE.CylinderGeometry(0.008, 0.008, 0.19, 6).rotateZ(Math.PI / 2).translate(0, -0.056, s * 0.22)]));
-    deck.add(new THREE.Mesh(trucks, truckMat)); deck.position.y -= FLIP_H; flip.add(deck);
-    sk.wheels = [];
-    for (const s of [-1, 1]) for (const xs of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.032, 14).rotateZ(Math.PI / 2), wheelMat); w.position.set(xs * 0.085, 0.027 - FLIP_H, s * 0.22); flip.add(w); sk.wheels.push(w); }
-    board.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); sk.deck = deck;
-    sk.snap(CLIP.idle, 0, 0.6); }
-  const SKT = { trick: null, tt: 0, next: 4, crouch: 0.25, lean: 0, prevX: S.x, vx: 0, wheelA: 0, air: 0 };
+  // the player gets a lighter body: decimated with meshoptimizer (skin weights carried over), keeping the original
+  // smooth vertex normals, and a softer skin normal map so the 'superhero' muscle definition reads as an everyday build
+  try {
+    const g0 = sk.body.geometry.clone(); for (const n of ['uv1', 'uv2', 'uv3', 'color', 'color_1']) g0.deleteAttribute(n);
+    const before = g0.index.count / 3, g1 = await new SimplifyModifier().modify(g0, Math.round(g0.attributes.position.count * Q.skaterDecimate));
+    g1.computeBoundingSphere(); sk.body.geometry = g1; g0.dispose();
+    console.log('[characters] player body simplified: %d → %d triangles', before, g1.index.count / 3);
+  } catch (err) { console.warn('[characters] could not simplify the player body, keeping the full mesh:', err); }
+  skaterApp.mat.normalScale.set(0.4, 0.4); skaterApp.mat.roughness = 1;
+  if (sk.brows) sk.brows.visible = false;   // brows/eye cards add little at chase-camera distance
+  const mainBoard = makeBoard(0x1d1d1f), board = mainBoard.board, flip = mainBoard.flip; skater.add(board); skater.add(sk.wrap);
+  sk.wheels = mainBoard.wheels; sk.deck = mainBoard.deck; sk.snap(CLIP.idle, 0, 0.6);
+  const SKT = { lean: 0, prevX: S.x, vx: 0, wheelA: 0, stanceA: Math.PI / 2 };
   const DECK_TOP = 0.083 + 0.014;
 
   // ---------------- per-frame state ----------------
@@ -462,25 +540,35 @@ export async function createCharacters(ctx) {
   function ensureInScene(o) { if (!o.inScene) { crowdGroup.add(o.wrap || o.g); o.inScene = true; } }
   function removeFromScene(o) { if (o.inScene) { crowdGroup.remove(o.wrap || o.g); o.inScene = false; } }
   function releaseRig(r) { const a = r.agent; if (a) { a.rig = null; if (a.dogRig) { a.dogRig.agent = null; removeFromScene(a.dogRig); a.dogRig.leash.removeFromParent(); a.dogRig = null; }
-      if (a.bike) { a.bike.agent = null; removeFromScene(a.bike); a.bike = null; } if (a.prop) { a.prop.agent = null; removeFromScene(a.prop); a.prop = null; } }
+      if (a.bike) { a.bike.agent = null; removeFromScene(a.bike); a.bike = null; } if (a.board) { a.board.agent = null; removeFromScene(a.board); a.board = null; } if (a.prop) { a.prop.agent = null; removeFromScene(a.prop); a.prop = null; } }
     r.agent = null; r.phone.visible = false; removeFromScene(r); }
   function assignRig(a) {
     const pool = POOL[a.sex]; let r = null; for (const x of pool) if (!x.agent) { r = x; break; } if (!r) return false;
     // IK-driven rigs keep a uniform scale so world-space bone maths stays exact
-    const wb = a.kind === 'cycle' || a.kind === 'selfie' ? 1 : a.w;
+    const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
     r.agent = a; a.rig = r; r.setApp(a.app); r.acc = 0; r.wrap.scale.set(a.scale * wb, a.scale, a.scale * wb);
     placeRig(a); r.snap(currentClip(a), a.t0 + performance.now() * 0.001, a.ts); r.phone.visible = a.kind === 'selfie'; ensureInScene(r);
-    if (a.dog) { const d = DOGS.find((x) => !x.agent && x.T === a.dog) || DOGS.find((x) => !x.agent); if (d) { d.agent = a; a.dogRig = d; ensureInScene(d); crowdGroup.add(d.leash); } }
-    if (a.kind === 'cycle') { const b = BIKES.find((x) => !x.agent); if (b) { b.agent = a; a.bike = b; ensureInScene(b); } }
-    if (a.kind === 'lie' || (a.kind === 'perform' && a.st.act !== 'spell')) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
+    if (a.dog) { let d = DOGS.find((x) => !x.agent && x.T === a.dog) || DOGS.find((x) => !x.agent);
+      if (!d && a.game) { d = DOGS.find((x) => x.agent && !x.agent.game); if (d) releaseRig(d.agent.rig); }   // game dogs take one from the ambient crowd
+      if (d) { d.agent = a; a.dogRig = d; ensureInScene(d); crowdGroup.add(d.leash); } }
+    if (a.kind === 'cycle') { let b = BIKES.find((x) => !x.agent);
+      if (!b && a.game) { b = BIKES.find((x) => x.agent && !x.agent.game); if (b) releaseRig(b.agent.rig); }   // game traffic takes a bike from an ambient cyclist
+      if (b) { b.agent = a; a.bike = b; ensureInScene(b); } }
+    if (a.kind === 'skate') { const bd = CRUISE_BOARDS.find((x) => !x.agent); if (bd) { bd.agent = a; a.board = bd; bd.deck.children[0].material.color.setHex(a.deckColor); ensureInScene(bd); } }
+    if (a.kind === 'lie' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit')) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
     return true;
   }
-  function setupProp(a) { const p = a.prop, lie = a.kind === 'lie';
-    p.towel.visible = lie; p.speaker.visible = !lie && a.st.act === 'dance'; p.hat.visible = !lie;
-    p.towel.material = towelMats[(a.st.seed >>> 3) % towelMats.length];
-    p.g.position.set(a.x, a.y, a.z); p.g.rotation.set(0, a.ry, 0);
+  function setupProp(a) { const p = a.prop, lie = a.kind === 'lie', perf = a.kind === 'perform', sit = SIT_KINDS.has(a.kind), h = a.st.seed >>> 3;
+    p.towel.visible = lie; p.speaker.visible = perf && a.st.act === 'dance'; p.hat.visible = perf;
+    p.towel.material = towelMats[h % towelMats.length];
+    const bucket = sit && (a.kind === 'drum' ? h % 3 !== 0 : h % 3 === 0); p.bucket.visible = sit && bucket; p.crate.visible = sit && !bucket;
+    p.crate.material = p.bucket.material = seatMats[h % seatMats.length];
+    p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.5);
+    p.cup.visible = a.kind === 'beg'; p.sign.visible = a.kind === 'beg'; p.sign.material = signMats[h % signMats.length]; p.sign.position.set(-0.42, 0, 0.3); p.sign.rotation.set(-0.25, 0.35, 0);
+    p.cig.visible = a.kind === 'smoke';
+    p.g.position.set(a.x, sit ? a.y - SEAT : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
     p.speaker.position.set(0.9, 0, -0.3); p.hat.position.set(0.1, 0, 0.75); p.towel.position.set(0, 0, 0); }
-  function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick;
+  function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick; a.key = a.game ? a.dist - 1e4 : a.dist;
     a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < Q.rRig) cands.push(a); }
   // walkers side-step people standing on the walk (performers, their audience, selfie-takers)
   const OBST = [];
@@ -492,16 +580,19 @@ export async function createCharacters(ctx) {
   const _q = new QT(), _e = new THREE.Euler();
   function placeRig(a) {
     const r = a.rig, w = r.wrap, c = calib[a.sex];
-    if (a.kind === 'walk') { w.position.set(a.x + avoidX(a), 0, a.z); w.rotation.set(0, a.stopFor > 0 ? a.stopYaw : (a.dir > 0 ? 0 : Math.PI), 0); }
-    else if (a.kind === 'sit') { // put the clip's pelvis 0.1 m above the seat, slightly behind the seat centre
+    if (a.kind === 'walk') { w.position.set(a.x + (a.game ? 0 : avoidX(a)), 0, a.z); w.rotation.set(0, a.stopFor > 0 ? a.stopYaw : (a.dir > 0 ? 0 : Math.PI), 0); }
+    else if (SIT_KINDS.has(a.kind)) { // put the clip's pelvis 0.1 m above the seat, slightly behind the seat centre
       const px = c.sit.x * a.scale, pz = c.sit.z * a.scale, py = c.sit.y * a.scale; const sn = Math.sin(a.ry), cs = Math.cos(a.ry);
       const tx = a.x - sn * 0.05, tz = a.z - cs * 0.05; w.position.set(tx - (px * cs + pz * sn), a.y + 0.11 - py, tz - (-px * sn + pz * cs)); w.rotation.set(0, a.ry, 0); }
     else if (a.kind === 'lie') {   // on the back on a towel: tipped 90° about x, head toward -z before the yaw
       const h = 0.85 * a.scale; w.position.set(a.x + Math.sin(a.ry) * h, a.y + 0.13 * a.scale, a.z + Math.cos(a.ry) * h); w.rotation.set(-Math.PI / 2, a.ry, 0, 'YXZ'); }
-    else if (a.kind === 'cycle') { const b = a.bike; w.rotation.set(0, a.dir > 0 ? 0 : Math.PI, 0);
-      const py = c.drive.y * a.scale, pz = c.drive.z * a.scale; const fz = a.dir > 0 ? 1 : -1;
-      w.position.set(a.x, BK.saddle.y + 0.1 - py, a.z + fz * (BK.saddle.z - pz));
-      if (b) { b.g.position.set(a.x, 0, a.z); b.g.rotation.set(0, w.rotation.y, 0); } }
+    else if (a.kind === 'cycle') { const b = a.bike, yaw = a.yaw ?? (a.dir > 0 ? 0 : Math.PI); w.rotation.set(0, yaw, 0);
+      const py = c.drive.y * a.scale, pz = c.drive.z * a.scale, off = BK.saddle.z - pz;
+      w.position.set(a.x + Math.sin(yaw) * off, BK.saddle.y + 0.1 - py, a.z + Math.cos(yaw) * off);
+      if (b) { b.g.position.set(a.x, 0, a.z); b.g.rotation.set(0, yaw, 0); } }
+    else if (a.kind === 'skate') {   // cruising side-on on a board, like the player's skater
+      const bd = a.board; if (bd) { bd.board.position.set(a.x, 0, a.z); bd.board.rotation.set(0, a.yaw, 0); }
+      _q.setFromAxisAngle(_UP, a.yaw); w.quaternion.copy(_q).multiply(_sideQ); _p.set(-0.03, -0.3 * 0.24, 0).applyQuaternion(_q); w.position.set(a.x + _p.x, _p.y, a.z + _p.z); }
     else { w.position.set(a.x, a.y, a.z); w.rotation.set(0, a.ry, 0); }
   }
 
@@ -523,6 +614,41 @@ export async function createCharacters(ctx) {
   }
   const _phM = new THREE.Matrix4(), _phQ = new QT(), _O = new V3();
   // lying on the towel: bring the T-pose arms down beside the body, slight knee bend
+  // seated people: drumming hands on the djembe, a cigarette raised to the mouth now and then, a cup held out
+  const _hp = new V3(), _sq = new QT();
+  function handTo(mesh, prop, hand, fwd, up) { hand.updateMatrixWorld(true); hand.getWorldPosition(_hp).addScaledVector(_f, fwd).addScaledVector(_UP, up); prop.g.worldToLocal(_hp); mesh.position.copy(_hp); }
+  function sitArms(a, r, t) {
+    const B = r.bones, P = a.prop; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q);
+    _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);   // character forward / right
+    const g0 = a.y - SEAT;
+    if (a.kind === 'drum') {
+      for (const side of [1, -1]) {   // +1 = left hand; hands alternate, each beat is a quick drop onto the head
+        const beat = Math.max(0, Math.sin(t * (8 + a.phase * 2) + a.phase * 6.28 + (side > 0 ? 0 : Math.PI)));
+        _t.set(a.x, g0 + 0.64 + beat * 0.15, a.z).addScaledVector(_f, 0.48).addScaledVector(_r, -side * 0.08);
+        _p.copy(_r).multiplyScalar(-side * 0.8).addScaledVector(_UP, -0.5);
+        const L = side > 0; ik2(L ? B.upperarm_l : B.upperarm_r, L ? B.lowerarm_l : B.lowerarm_r, L ? B.hand_l : B.hand_r, _t, _p);
+      }
+    } else if (a.kind === 'smoke') {
+      const c = (t + a.phase * 7) % 7, lift = smooth(0, 0.7, c) * (1 - smooth(2.3, 3.0, c));
+      B.Head.getWorldPosition(_h);
+      if (lift > 0.01) { _t.copy(_h).addScaledVector(_f, 0.11).addScaledVector(_UP, -0.07).addScaledVector(_r, 0.02);
+        _p.copy(_UP).multiplyScalar(-0.7).addScaledVector(_r, 0.6); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, lift); }
+      if (P) { handTo(P.cig, P, B.hand_r, 0.05, 0.0); P.cig.rotation.set(0, 0, 0); }
+      cigMat.emissiveIntensity = 1.5;
+      if (a.puffC !== undefined && a.puffC < 3.1 && c >= 3.1) puff(_h.x + _f.x * 0.15, _h.y - 0.04, _h.z + _f.z * 0.15);   // exhale after the drag
+      a.puffC = c;
+    } else if (a.kind === 'beg') {
+      B.upperarm_r.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_f, 0.4).addScaledVector(_UP, -0.24 + Math.sin(t * 1.3 + a.phase * 6) * 0.03).addScaledVector(_r, 0.06);
+      _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, 0.4); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, 0.9);
+      if (P) handTo(P.cup, P, B.hand_r, 0.03, 0.02);
+    }
+  }
+  // smoke puffs: a small pool of fading spheres
+  const PUFFS = []; { const pg = new THREE.SphereGeometry(0.05, 8, 6);
+    for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
+  function puff(x, y, z) { const m = PUFFS.find((p) => p.userData.t > 2.4); if (!m) return; m.userData.t = 0; m.position.set(x, y, z); m.visible = true; }
+  function updatePuffs(dt) { for (const m of PUFFS) if (m.visible) { const u = m.userData; u.t += dt; m.position.y += dt * 0.22; m.position.x += dt * 0.06;
+    m.scale.setScalar(1 + u.t * 2.4); m.material.opacity = 0.3 * (1 - u.t / 2.4); if (u.t > 2.4) m.visible = false; } }
   function lieArms(r) { const B = r.bones; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q); _f.set(0, 0, 1).applyQuaternion(_q); _r.set(1, 0, 0).applyQuaternion(_q);
     rotWorld(B.upperarm_l, _f, -1.25); rotWorld(B.upperarm_r, _f, 1.25); rotWorld(B.lowerarm_l, _f, 0.15); rotWorld(B.lowerarm_r, _f, -0.15);
     rotWorld(B.thigh_l, _r, -0.25); rotWorld(B.calf_l, _r, 0.45); }
@@ -547,56 +673,78 @@ export async function createCharacters(ctx) {
   const _bw = new QT(), _footRel = {}, _tmpQ = new QT(), _wq = new QT(), _sideQ = new QT().setFromAxisAngle(new V3(0, 1, 0), Math.PI / 2), _Z = new V3(0, 0, 1);
   { sk.wrap.position.set(0, 0, 0); sk.wrap.quaternion.copy(_sideQ); skater.updateMatrixWorld(true); sk.wrap.getWorldQuaternion(_wq); _wq.invert();
     for (const n of ['foot_l', 'foot_r']) { const q = new QT(); sk.bones[n].getWorldQuaternion(q); _footRel[n] = q.premultiply(_wq); } }
-  function trickCurve(tr, t) {   // returns {air, pitch, roll, crouch, flick}
-    const o = trickOut; o.air = 0; o.pitch = 0; o.roll = 0; o.crouch = 0; o.flick = 0; o.lift = 0;
-    const pop = 0.2, land = 0.74;
-    if (t < pop) { o.crouch = smooth(0, pop, t) * 0.75; return o; }
-    if (t < land) { const u = (t - pop) / (land - pop); o.air = 4 * u * (1 - u) * (tr === 'kickflip' ? 0.5 : 0.42);
-      o.pitch = Math.sin(clamp(u / 0.35, 0, 1) * Math.PI) * 0.42 * (u < 0.35 ? 1 : 0);
-      o.crouch = lerp(-0.15, 0.45, smooth(0.2, 0.7, u));
-      if (tr === 'kickflip') { o.roll = smooth(0.18, 0.62, u) * Math.PI * 2; o.flick = Math.sin(clamp((u - 0.1) / 0.28, 0, 1) * Math.PI); o.lift = Math.sin(clamp((u - 0.12) / 0.62, 0, 1) * Math.PI) * 0.11; }
-      return o; }
-    const u = (t - land) / 0.3; o.crouch = lerp(0.85, 0.25, smooth(0, 1, u)); return o;
-  }
-  const trickOut = { air: 0, pitch: 0, roll: 0, crouch: 0, flick: 0, lift: 0 };
+  // the same foot-to-deck rotation for each body (cruising skaters can be either)
+  const FOOT_REL = { M: _footRel, F: {} };
+  { const r = POOL.F[0]; r.snap(CLIP.idle, 0, 0.6); r.wrap.position.set(0, 0, 0); r.wrap.quaternion.copy(_sideQ); r.wrap.scale.setScalar(1); r.wrap.updateMatrixWorld(true);
+    r.wrap.getWorldQuaternion(_wq); _wq.invert(); for (const n of ['foot_l', 'foot_r']) { const q = new QT(); r.bones[n].getWorldQuaternion(q); FOOT_REL.F[n] = q.premultiply(_wq); } }
+  const CRUISE_BOARDS = [0x1d1d1f, 0x2a6fc9, 0xc9302c, 0x24a865, 0xf2cf4a].map(makeBoard);
+  // The pose comes from game.js through S.pose (all optional, 0 = neutral riding):
+  //   air (board height, m), airN (0..1 of the jump apex), pitch (board nose-up), roll (kickflip, rad), crouch (+ = knees bent),
+  //   flick (front-foot kick 0..1), lift (feet hover during a flip, m), flipping, lean (rad, into the turn),
+  //   spin (impossible: end-over-end, rad), flickDir (-1 = heelflip), stance (+1 regular / -1 switch),
+  //   bodyPitch (+ = leaning back), flail (arm windmill 0..1), boardZ / boardYaw (board kicked out), offBoard (0..1 feet leave the deck)
+  const POSE0 = {};
   function updateSkater(dt, t) {
-    const B = sk.bones;
+    const B = sk.bones, P = S.pose || POSE0;
     SKT.vx = lerp(SKT.vx, (S.x - SKT.prevX) / Math.max(dt, 1e-4), 1 - Math.exp(-dt * 6)); SKT.prevX = S.x;
-    const targetLean = clamp(-SKT.vx * 0.22, -0.3, 0.3); SKT.lean = lerp(SKT.lean, S.moving ? targetLean : 0, 1 - Math.exp(-dt * 5));
-    if (S.moving) { SKT.next -= dt; if (!SKT.trick && SKT.next <= 0) { SKT.trick = chance(0.45) ? 'kickflip' : 'ollie'; SKT.tt = 0; SKT.next = rand(5, 9); } }
-    let o = null; if (SKT.trick) { SKT.tt += dt; o = trickCurve(SKT.trick, SKT.tt); if (SKT.tt > 1.05) SKT.trick = null; }
-    const air = o ? o.air : 0, crouch = 0.22 + Math.sin(t * 1.3) * 0.03 + (o ? o.crouch : 0) + Math.abs(SKT.lean) * 0.3;
+    if (P.lean !== undefined) SKT.lean = P.lean;
+    else { const targetLean = clamp(-SKT.vx * 0.22, -0.3, 0.3); SKT.lean = lerp(SKT.lean, S.moving ? targetLean : 0, 1 - Math.exp(-dt * 5)); }
+    const air = P.air || 0, airN = P.airN || 0, flick = P.flick || 0, lift = P.lift || 0, off = P.offBoard || 0, flail = P.flail || 0;
+    const crouch = 0.22 + Math.sin(t * 1.3) * 0.03 + (P.crouch || 0) + Math.abs(SKT.lean) * 0.3;
     // board: pops around the tail (lift compensates the nose-up pitch), flips about its long axis
-    const pitch = o ? o.pitch : 0, roll = (o ? o.roll : 0) + SKT.lean * 0.45;
-    board.position.y = air + Math.sin(pitch) * 0.36; board.rotation.set(pitch, 0, 0); flip.rotation.z = roll;
+    const pitch = P.pitch || 0, roll = (P.roll || 0) + SKT.lean * 0.45;
+    const spin = P.spin || 0;   // impossible: the board wraps end over end around the back truck (z = +0.22)
+    board.position.set(0, air + Math.sin(pitch) * 0.36 + 0.22 * Math.sin(spin), (P.boardZ || 0) + 0.22 - 0.22 * Math.cos(spin)); board.rotation.set(pitch + spin, P.boardYaw || 0, 0); flip.rotation.z = roll;
     if (S.moving) SKT.wheelA -= S.speed * dt / 0.027; for (const w of sk.wheels) w.rotation.x = SKT.wheelA;
-    // body root: between the feet, side-on (left foot forward), drops with crouch, rises with the board, leans into turns
-    _tmpQ.setFromAxisAngle(_Z, SKT.lean); sk.wrap.quaternion.copy(_tmpQ).multiply(_sideQ);
-    sk.wrap.position.set(-0.03, air - crouch * 0.24 + (o ? o.lift : 0) * 0.6, 0.0);
+    // stance: regular (left foot forward, body facing +x) or switch (right foot forward). A change turns the body
+    // through facing forward; st runs +1 → -1 and mirrors everything side-dependent below
+    const stTarget = (P.stance ?? 1) > 0 ? Math.PI / 2 : Math.PI * 1.5;
+    SKT.stanceA += clamp(stTarget - SKT.stanceA, -dt * 12, dt * 12); const st = Math.sin(SKT.stanceA);
+    _stQ.setFromAxisAngle(_UP, SKT.stanceA);
+    // body root: between the feet, side-on, drops with crouch, rises with the board, leans into turns
+    _tmpQ.setFromAxisAngle(_X, P.bodyPitch || 0); _rq2.setFromAxisAngle(_Z, SKT.lean); sk.wrap.quaternion.copy(_tmpQ).multiply(_rq2).multiply(_stQ);
+    sk.wrap.position.set(-0.03 * st, air - crouch * 0.24 + lift * 0.6, 0.0);
     sk.update(dt); sk.saveOverride();
     skater.updateMatrixWorld(true);
     skater.getWorldQuaternion(_bw); _f.set(0, 0, -1).applyQuaternion(_bw); _r.set(1, 0, 0).applyQuaternion(_bw); _u.set(0, 1, 0).applyQuaternion(_bw);
-    // upper body: twist toward travel, forward bend with crouch, arms out for balance
-    rotWorld(B.spine_02, _u, 0.32); rotWorld(B.spine_01, _f, 0.12 + crouch * 0.35); rotWorld(B.neck_01, _u, 0.45); rotWorld(B.Head, _u, 0.42);
-    const armOut = 0.85 + (o ? o.air * 1.6 + o.flick * 0.3 : 0) + Math.sin(t * 2.1) * 0.06;
-    rotWorld(B.upperarm_l, _r, armOut); rotWorld(B.upperarm_r, _r, -armOut);
-    rotWorld(B.upperarm_l, _f, SKT.lean * 0.5); rotWorld(B.upperarm_r, _f, SKT.lean * 0.5);
+    // upper body: twist toward travel, forward bend with crouch, arms out for balance (rising in the air, windmilling when off balance)
+    rotWorld(B.spine_02, _u, 0.32 * st); rotWorld(B.spine_01, _f, (0.12 + crouch * 0.35) * st); rotWorld(B.neck_01, _u, 0.45 * st); rotWorld(B.Head, _u, 0.42 * st);
+    const armOut = 0.85 + airN * 0.7 + flick * 0.3 + Math.sin(t * 2.1) * 0.06;
+    rotWorld(B.upperarm_l, _r, (armOut + flail * Math.sin(t * 15) * 0.7) * st); rotWorld(B.upperarm_r, _r, (-armOut - flail * Math.sin(t * 15 + 1.7) * 0.7) * st);
+    rotWorld(B.upperarm_l, _f, SKT.lean * 0.5 + flail * 0.5); rotWorld(B.upperarm_r, _f, SKT.lean * 0.5 - flail * 0.5);
     sk.root.updateMatrixWorld(true);
     // feet: IK onto the deck (left = front foot toward the nose); during a flip they hover over the
     // un-rolled board, and the front foot flicks out toward the toe edge
-    const flipping = !!o && o.roll > 0.05 && o.roll < Math.PI * 2 - 0.05;
+    const flipping = !!P.flipping;
     sk.deck.updateMatrixWorld(true); sk.deck.getWorldQuaternion(_wq);
     const fh = calib.M.footH * 0.92;
-    for (const n of ['l', 'r']) {
-      const front = n === 'l';
-      _t.set(-0.035, DECK_TOP - 0.083 + fh + (o ? o.lift : 0), front ? -0.19 : 0.22);
+    if (off < 0.999) for (const n of ['l', 'r']) {
+      const front = (n === 'l') === (st >= 0);   // the left foot leads in regular stance, the right in switch
+      _t.set(-0.035 * st, DECK_TOP - 0.083 + fh + lift, (front ? -0.19 : 0.22) * Math.abs(st));
       if (flipping) { _t.y += 0.083; _t.applyEuler(_e.set(pitch, 0, 0)); _t.y += board.position.y; skater.localToWorld(_t); }
       else sk.deck.localToWorld(_t);
-      if (front && o && o.flick) _t.addScaledVector(_r, o.flick * 0.16).addScaledVector(_f, o.flick * 0.06).addScaledVector(_u, o.flick * 0.06);
+      if (front && flick) _t.addScaledVector(_r, flick * 0.16 * (P.flickDir || 1) * st).addScaledVector(_f, flick * 0.06).addScaledVector(_u, flick * 0.06);
+      _p.copy(_r).multiplyScalar(0.8 * st).addScaledVector(_f, front ? 0.5 : -0.5);
+      ik2(B['thigh_' + n], B['calf_' + n], B['foot_' + n], _t, _p, 1 - off);
+      if (off < 0.01) { _tmpQ.copy(flipping ? _bw : _wq).multiply(_stQ).multiply(_footRel['foot_' + n]); setWorldQ(B['foot_' + n], _tmpQ); }
+    }
+  }
+  const _X = new V3(1, 0, 0), _rq2 = new QT(), _UP = new V3(0, 1, 0), _wq2 = new QT(), _stQ = new QT();
+
+  // a crossing skater: relaxed crouch, arms out, feet planted on the deck by IK
+  function cruise(a, r) {
+    const B = r.bones, bd = a.board; if (!bd) return;
+    r.wrap.updateMatrixWorld(true); bd.board.updateMatrixWorld(true);
+    bd.board.getWorldQuaternion(_bq); _f.set(0, 0, -1).applyQuaternion(_bq); _r.set(1, 0, 0).applyQuaternion(_bq);
+    rotWorld(B.spine_02, _UP, 0.3); rotWorld(B.spine_01, _f, 0.2); rotWorld(B.neck_01, _UP, 0.45); rotWorld(B.Head, _UP, 0.4);
+    rotWorld(B.upperarm_l, _r, 0.8); rotWorld(B.upperarm_r, _r, -0.8);
+    r.root.updateMatrixWorld(true); bd.deck.updateMatrixWorld(true); bd.deck.getWorldQuaternion(_wq2);
+    const rel = FOOT_REL[r.sex], fh = calib[r.sex].footH * 0.92;
+    for (const n of ['l', 'r']) { const front = n === 'l';
+      _t.set(-0.035, DECK_TOP - 0.083 + fh, front ? -0.19 : 0.22); bd.deck.localToWorld(_t);
       _p.copy(_r).multiplyScalar(0.8).addScaledVector(_f, front ? 0.5 : -0.5);
       ik2(B['thigh_' + n], B['calf_' + n], B['foot_' + n], _t, _p);
-      _tmpQ.copy(flipping ? _bw : _wq).multiply(_sideQ).multiply(_footRel['foot_' + n]); setWorldQ(B['foot_' + n], _tmpQ);
-    }
+      _tmpQ.copy(_wq2).multiply(_sideQ).multiply(rel['foot_' + n]); setWorldQ(B['foot_' + n], _tmpQ); }
   }
 
   // ---------------- main update ----------------
@@ -605,7 +753,7 @@ export async function createCharacters(ctx) {
     tick++; if (api.frozen) dt = 0;   // debug: hold the crowd still for close-up screenshots
     camera.updateMatrixWorld(); camPos.setFromMatrixPosition(camera.matrixWorld);
     _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(_pm);
-    const zRef = camPos.z, crowd = phase.crowd, nWalk = Math.round(crowd * WALKERS.length);
+    const zRef = camPos.z, crowd = phase.crowd, nWalk = Math.round(crowd * WALKERS.length * api.walkerScale);
     if (!initDone || Math.abs(zRef - lastZ) > 40) {   // first frame or a camera teleport: scatter everyone around the view again
       R = mulberry32(777); for (const a of WALKERS) { if (a.rig) releaseRig(a.rig); respawn(a, zRef, true); } for (const a of CYCLISTS) { if (a.rig) releaseRig(a.rig); respawn(a, zRef, true); }
       initDone = true; lodT = 0; }
@@ -622,6 +770,7 @@ export async function createCharacters(ctx) {
           if (a.rig) a.rig.play(a.stopClip, { fade: 0.35, ts: rand(0.9, 1.1) }); } }
       if (a.z > zRef + 14 || a.z < zRef - 300) { respawn(a, zRef, false); if (a.rig) releaseRig(a.rig); }
     }
+    for (const a of GAME_AGENTS) if (a.kind === 'cycle') a.crank += a.speed * dt / BK.wheelR * 0.36;
     for (const a of CYCLISTS) { a.z += a.dir * a.speed * dt; a.crank += a.speed * dt / BK.wheelR * 0.36; if (a.z > zRef + 16 || a.z < zRef - 300) { respawn(a, zRef, false); if (a.rig) releaseRig(a.rig); } }
     for (let i = nWalk; i < WALKERS.length; i++) if (WALKERS[i].rig) releaseRig(WALKERS[i].rig);
 
@@ -629,9 +778,11 @@ export async function createCharacters(ctx) {
     lodT -= dt;
     if (lodT <= 0) { lodT = 0.2; cands.length = 0;
       for (let i = 0; i < nWalk; i++) consider(WALKERS[i]);
-      for (const a of CYCLISTS) if (crowd > 0.15) consider(a); else a.vis = false;
-      for (const ch of chunks) if (ch.stations) for (const st of ch.stations) { if (crowd < st.minCrowd) { if (st.agent && st.agent.rig) releaseRig(st.agent.rig); continue; } consider(stationAgent(st)); }
-      cands.sort((p, q) => p.dist - q.dist);
+      for (const a of GAME_AGENTS) consider(a);
+      const nCyc = Math.round(CYCLISTS.length * api.walkerScale);   // walkerScale thins everyone off the lanes: walkers, cyclists, station people
+      CYCLISTS.forEach((a, i) => { if (crowd > 0.15 && i < nCyc) consider(a); else { a.vis = false; if (a.rig) releaseRig(a.rig); } });
+      for (const ch of chunks) if (ch.stations) for (const st of ch.stations) { if (crowd < st.minCrowd || (!st.always && ((Math.imul(st.seed, 2654435761) >>> 0) / 4294967296) >= api.walkerScale)) { if (st.agent && st.agent.rig) releaseRig(st.agent.rig); continue; } consider(stationAgent(st)); }
+      cands.sort((p, q) => p.key - q.key);   // game pedestrians first, then by distance
       OBST.length = 0; for (const a of cands) if (a.kind === 'perform' || a.kind === 'watch' || a.kind === 'selfie') OBST.push(a);
       const keepM = Q.rigsPerSex, keepF = Q.rigsPerSex; let nM = 0, nF = 0;
       for (const a of cands) { if (a.sex === 'M' ? nM++ < keepM : nF++ < keepF) a.want = tick; }
@@ -648,14 +799,17 @@ export async function createCharacters(ctx) {
       r.setShadow(a.dist < Q.shadowDist); r.setDetail(a.dist < 18);
       r.acc += dt;
       if (near || (tick + r.body.id) % Q.midEvery === 0) { if (a.kind === 'walk' && a.stopFor <= 0 && r.cur) r.cur.timeScale = a.ts; r.update(r.acc); r.acc = 0; stats.mixers++;
-        if (a.kind === 'selfie') { r.saveOverride(); selfie(r, t); } else if (a.kind === 'lie') { r.saveOverride(); lieArms(r); } else if (a.kind === 'cycle') { r.saveOverride(); cycle(a, r); } }
+        if (a.kind === 'skate') { r.saveOverride(); cruise(a, r); }
+        else if (a.kind === 'beg' || a.kind === 'smoke' || a.kind === 'drum') { r.saveOverride(); sitArms(a, r, t); }
+        else if (a.kind === 'selfie') { r.saveOverride(); selfie(r, t); } else if (a.kind === 'lie') { r.saveOverride(); lieArms(r); } else if (a.kind === 'cycle') { r.saveOverride(); cycle(a, r); } }
       if (near) stats.near++; else stats.mid++;
       // dog on a lead, trotting beside the owner at the owner's pace
-      const d = a.dogRig; if (d) { stats.dogs++; const side = a.offX >= 0 ? -1 : 1, moving = a.stopFor <= 0;
-        d.wrap.position.set(a.x + side * 0.75, 0, a.z + a.dir * 0.9); d.wrap.rotation.y = moving ? (a.dir > 0 ? 0 : Math.PI) : d.wrap.rotation.y;
+      const d = a.dogRig; if (d) { stats.dogs++; const side = a.game ? 0 : a.offX >= 0 ? -1 : 1, moving = a.stopFor <= 0;
+        d.wrap.position.set(a.x + side * 0.75, 0, a.z + a.dir * (a.game ? 1.25 : 0.9)); d.wrap.rotation.y = moving ? (a.dir > 0 ? 0 : Math.PI) : d.wrap.rotation.y;
         d.walk.weight = lerp(d.walk.weight, moving ? 1 : 0, 1 - Math.exp(-dt * 6)); d.idle.weight = 1 - d.walk.weight; d.walk.timeScale = a.speed / (d.T.speed);
         d.mixer.update(dt); r.bones.hand_r.getWorldPosition(_p); d.wrap.updateMatrixWorld(true); _h.set(0, 0.45, 0.25); d.wrap.localToWorld(_h);
         const pa = d.leash.geometry.attributes.position; pa.setXYZ(0, _p.x, _p.y, _p.z); pa.setXYZ(1, _h.x, _h.y, _h.z); pa.needsUpdate = true; }
+      if (a.board) for (const w of a.board.wheels) w.rotation.x -= a.speed * dt / 0.027;
       if (a.bike) { const b = a.bike; for (const w of b.wheels) w.rotation.x += a.speed * dt / BK.wheelR; b.crank.rotation.x = a.crank - Math.PI / 2; }
     }
 
@@ -670,6 +824,7 @@ export async function createCharacters(ctx) {
       _q.setFromAxisAngle(_u.set(0, 1, 0), yaw); _M.compose(_p.set(a.x, 0, a.z), _q, _S.set(a.scale * a.w, a.scale, 1)); impostors.setMatrixAt(n++, _M); }
     impostors.count = n; impostors.instanceMatrix.needsUpdate = true; aCell.needsUpdate = true; stats.imp = n;
 
+    updatePuffs(dt);
     updateSkater(dt, t);
   }
   const _M = new THREE.Matrix4(), _S = new V3();
@@ -678,7 +833,6 @@ export async function createCharacters(ctx) {
   const aoHidden = [];
   function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
-  function trick(name) { if (!SKT.trick) { SKT.trick = name; SKT.tt = 0; } }
-  const api = { frozen: false, update, trick, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
+  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
 }

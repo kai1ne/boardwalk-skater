@@ -1,7 +1,8 @@
-# Venice Boardwalk — Phase 1 (look-dev)
+# Boardwalk Skater
 
-A desktop-only Three.js scene of a Venice-style beach boardwalk. In this phase the only goal is to look as close
-to the photos in `reference/` as possible. There's no gameplay yet.
+A desktop, keyboard-only Three.js endless skater on a Venice-style beach boardwalk. Phase 1 matched the look of the
+photos in `reference/`, phase 1b added the rigged crowd, and phase 2 (this version) makes it playable from the title
+screen to game over.
 
 ## Run
 
@@ -19,16 +20,55 @@ loads from jsDelivr through an import map.
 
 | Key | Action |
 |---|---|
-| 1–4 | Jump to a phase: sunny midday, golden hour, marine-layer fog, blue hour |
-| P | Pause or resume the lighting cycle (20 s per phase, with a smooth blend into the next) |
-| Space | Stop or start the placeholder skater |
-| J / K | Make the skater do an ollie or a kickflip (they also happen on their own every 5–9 s) |
+| Enter / Space | Start, or restart after game over |
+| ← → or A D | Tap to carve one lane; hold to keep sliding across lanes without stopping |
+| ↑ or Space (or W) | Jump. A quick tap is always a plain ollie. Hold longer (up to about 0.3 s) to jump higher; the height picks the trick: kickflip → heelflip → hardflip → 360 flip → impossible |
+| ↑ or ↓ in the air | Switch feet: the body turns so the other foot leads (regular ↔ switch). You land and keep riding that way; landing a switch adds 50 |
+| Esc | Pause or resume (the game also pauses when the tab is hidden) |
+
+Debug keys:
+
+| Key | Action |
+|---|---|
+| 1–4 | Jump to a lighting phase: sunny midday, golden hour, marine-layer fog, blue hour |
+| P | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| H | Draw the collision boxes (cyan = skater, red = solid, orange = jumpable, yellow = slip) |
 | C | Switch between the chase camera and an eye-level (1.7 m) camera |
 | O | Turn ambient occlusion (GTAO) on or off |
 
+## How to play
+
+Skate as far as you can. Speed starts at 27 km/h and climbs to 58 km/h.
+
+- **Health** (top right): every obstacle you run into costs health: 34 for anything solid (3 hits end the run) and
+  10 for slipping on pizza or poop. Each obstacle can only hit you once, and there's no invincibility window, so
+  back-to-back hits each count. A hit gives a short camera jolt.
+- **Energy**: every jump costs 8–40 depending on how high you go (the trick comes with the height). It refills at
+  6 per second. A big jump with too little energy is cut down to what you can afford, so you get a lower trick. While you hold jump, the dark end of the bar shows what the
+  jump will cost. With no energy you can't jump.
+- **People in the lanes:** walkers (some with a dog out front on a lead), cyclists and skaters riding with you or
+  toward you, and influencers stopped for a selfie. You can't jump any of them, so change lane. Now and then a
+  cyclist or skater also **rides across** the boardwalk.
+- **People sitting on buckets and crates:** someone asking for change, someone smoking, and drum circles. They sit
+  just off the lanes and in the outer two lanes. You can't jump the ones in a lane.
+- **Knocked-over trash cans** and **cone groups** can be jumped, but they need a fairly well-charged ollie.
+- **Pizza** and **dog poop** make you slip: you keep your health but lose speed and your combo. Jump them, or hit
+  jump within 0.1 s of touching one to get away clean.
+- At top speed a full charge takes about 5 m of travel, so start holding jump early for cans and cones.
+
+Score: 1 point per metre (the HUD shows the distance in feet). A jump is worth 25–100 depending on its height,
+plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossible 400. A jump that clears an obstacle scores double, plus 75 for the clear. Each landing multiplies by your combo
+(×2, ×3 … up to ×8). The combo grows with every landed jump and resets when you slip, wipe out or get hit, or after
+3 s on the ground without a jump. The best score is saved in the browser.
+
+Around you, pigeons and gulls on the ground take off as you ride up to them. A seagull flock wanders the sky and
+lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off again.
+
 ## Files
 
-- `venice-boardwalk.html` — the scene (one ES module).
+- `venice-boardwalk.html` — the scene (one ES module), plus the `GAME` tuning object near the top.
+- `game.js` — the game loop: states, input, lanes, jump/trick state machine, health and energy, obstacle and
+  crossing-traffic spawning, collisions, score and HUD (imported dynamically).
 - `characters.js` — the rigged crowd, skater, cyclists and dogs (imported dynamically; if it fails to load, the scene
   falls back to the old block figures).
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
@@ -80,6 +120,57 @@ loads from jsDelivr through an import map.
 - Debug: `__vb.chars` (pools, stats, `frozen = true` holds everyone still), `__vb.showSkater = true` keeps the
   skater visible in the `ref` camera.
 
+## Game (game.js)
+
+- **Tuning:** every gameplay number is in the `GAME` object near the top of `venice-boardwalk.html`. That covers the
+  speed ramp (`speed.start`, `ramp`, `max`), lane carves (`lanes.carveRatio`, `carveMin`, `carveMax`, `recoverTime`, `lean`), the jump
+  (`jump.minHeight`, `maxHeight`, `chargeTime`, `gravity`, `coyote`), tricks (`tricks.ollieBelow`, `order`,
+  `durShare`, points), `energy` and `health`, spawn gaps and crossing traffic (`spawn.minGap`, `reaction`,
+  `gapJitter`, `rampDist`, weights, `crossEvery`, crossing speeds), the hitbox sizes and the score values.
+- **Timing:** everything runs on delta time. Delta is clamped to 50 ms, and the clock ignores time while the tab is
+  hidden. The world (lighting cycle, crowd, skater) stands still while paused.
+- **Jump:** the arc is a real parabola under `jump.gravity`; how long you hold the key sets the apex between
+  `minHeight` and `maxHeight` (capped by the energy you have). States are ground → charge → air → land, plus slip,
+  bail (wipeout) and crash. Below `tricks.ollieBelow` of a full charge it is a plain ollie. Above that, the rest of the
+  range is split evenly between the five tricks in `tricks.order`, and each trick takes `durShare` of that jump's air
+  time, so it always lands clean. The heelflip spins the other way, the hardflip adds a half shove-it and a vertical
+  flip, the 360 flip adds a full shove-it, and the impossible wraps the board end over end around the back truck.
+- **Crossing traffic:** every 14–30 s a row slot is given to a cyclist or skater riding across the boardwalk at a
+  steady speed, timed to be over the lanes when you arrive. They use the rigged crowd: the cyclist rides one of the
+  procedural bikes, and the skater rides their own board with feet planted by IK.
+- **Fair spawning:** obstacles come in rows. Every row leaves at least one lane completely open. The gap between
+  rows is at least speed × (reaction time + three lane slides + recovery), so there is always time to reach the open
+  lane. Pedestrians are placed so they reach their row exactly when the skater does, whichever way they walk.
+  Obstacles ramp up steadily with distance over `spawn.rampDist` (1,500 m, about 4,900 ft): rows block more lanes
+  and the random slack between rows shrinks, but never below that reach-the-open-lane minimum. In testing,
+  density went from about 4 obstacles per 100 m at the start to 5 at 800 m and 7 at full difficulty. The weights give
+  70% people and 30% objects (cans, cones, pizza, poop).
+- **Collisions:** boxes per obstacle type, sized to the lanes. They never use the visual meshes. Jumpable and slip
+  obstacles are passed when the board is higher than the obstacle's `clear` value.
+- **Skater animation:** the free animation library has no skating clips (the 43 clip names are logged to the
+  console at load). So game.js writes a pose each frame (`S.pose`: air, pitch, kickflip roll, crouch, lean,
+  foot flick, arm flail, board kicked out), and characters.js turns it into bone edits after `mixer.update()`.
+- **Birds:** ground birds within reach of the skater take off in a ragged burst, then fly up and away. A flock of
+  9 gulls wanders ahead of the camera and lands on perch points. Lamps, cans, benches and palm crowns come from
+  each chunk's layout, and roof spots are found once per building template by casting rays straight down. Perched
+  gulls on low spots take off when the skater comes within 6 m. Flying birds are 3 instanced meshes (body plus 2
+  wings), with flapping, gliding, banking and folded wings.
+- **Player skater:** the body is decimated with three's `SimplifyModifier` (meshoptimizer) from 12,566 to about
+  5,650 triangles. Skin weights carry over and the original smooth normals are kept. The skin normal map is
+  softened so the 'superhero' muscles read as an everyday build, the eyebrow cards are dropped, and the outfit adds
+  white crew socks and white soles. `skaterDecimate` (0.55) sets how much is removed.
+- **Seated people:** beggars hold out a cup next to a cardboard sign, smokers raise a cigarette to their mouth
+  every few seconds and exhale a puff, and drummers beat djembes (arms driven by IK). Each sits on a bucket or milk
+  crate (`SIT_KINDS` in characters.js). Off-lane ones come from each chunk's layout and are kept even when
+  `crowd.sideWalkers` thins the rest of the side crowd.
+- **People:** all people obstacles use the rigged crowd and get a rig before anyone else. Walkers and riders moving
+  along a lane are placed so they reach their row exactly when you do. Same-way riders are always slower than you,
+  so you can catch them. Rows pick the lanes that have had the fewest people so far (with some shuffle), so people
+  spread evenly across the four lanes. The off-lane crowd (walkers, ambient cyclists, sitters, performers) is
+  thinned by `crowd.sideWalkers` (0.015) so each side strip holds about as many people as each lane. Set it to 1
+  for the full phase 1 crowd. The ambient crowd,
+  performers and selfie-takers stay outside the four lanes (|x| > 4.3 m). Edge scenery never collides.
+
 ## Adding a mobile mode later
 
 Everything that depends on the platform is in `QUALITY` at the top of the script: pixel ratio, MSAA, shadow map
@@ -90,6 +181,8 @@ device detection, and add touch input next to the existing `keydown` handler.
 
 `window.__vb` in the console:
 
+- `game` — the game object (`start()`, `kill()`, `st`, `sk`, `OBS`, `spawnObstacle(type, lane, z)`).
+- `timeScale` — slow motion (for example `0.05`) for checking animation.
 - `shot('ref1')` … `shot('ref6')` — set the camera and phase to match each reference photo.
 - `bench(30)` — milliseconds per frame without rAF timing (it forces a GPU sync).
 - `info()` — draw calls, triangles and any texture fallbacks used.

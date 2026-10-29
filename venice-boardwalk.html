@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Venice Boardwalk — Phase 1 Look-Dev</title>
+<title>Boardwalk Skater</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
@@ -11,6 +11,42 @@
          background: rgba(0,0,0,.38); padding: 6px 10px; border-radius: 6px; pointer-events: none; user-select: none; }
   #hud b { font-weight: 600; }
   #hud .k { opacity: .7; }
+  /* ---- game HUD + screens ---- */
+  #ghud { position: fixed; inset: 0; pointer-events: none; user-select: none; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff;
+          text-shadow: 0 1px 3px rgba(0,0,0,.55); opacity: 0; transition: opacity .3s; }
+  #ghud.show { opacity: 1; }
+  #ghud .tl { position: absolute; left: 18px; top: 14px; }
+  #ghud .tr { position: absolute; right: 18px; top: 14px; text-align: right; }
+  #gScore { font-size: 34px; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  #gCombo { font-size: 15px; font-weight: 700; color: #ffd84a; min-height: 18px; }
+  .meter { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
+  .meter .lbl { font-size: 11px; font-weight: 800; letter-spacing: 1px; opacity: .9; }
+  .meter .bar { position: relative; width: 150px; height: 11px; border-radius: 6px; background: rgba(0,0,0,.42); box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); overflow: hidden; }
+  .meter .bar > div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; transition: width .08s linear; }
+  #gHealth { background: #4cd964; } #gEnergy { background: #45c8ff; } #gEnergyCost { background: rgba(10,40,70,.75); border-radius: 0 6px 6px 0; transition: none; }
+  .meter .bar.flash { animation: mflash .45s ease-out; }
+  @keyframes mflash { 0%, 60% { box-shadow: inset 0 0 0 2px #ff5050, 0 0 10px #ff5050; } 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); } }
+  #gDist { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #gPops { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: 0; display: flex; flex-direction: column; align-items: center; }
+  .pop { white-space: nowrap; font-size: 22px; font-weight: 800; animation: pop 1.1s ease-out forwards; }
+  .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; }
+  @keyframes pop { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px); } }
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .35s;
+            font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
+  .screen.show { opacity: 1; }
+  .card { background: rgba(12,16,22,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 14px; padding: 26px 34px; text-align: center;
+          max-width: min(460px, calc(100vw - 32px)); box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .card h1 { margin: 0 0 4px; font-size: 38px; font-weight: 900; letter-spacing: 1px; }
+  .card h2 { margin: 0 0 14px; font-size: 30px; font-weight: 900; }
+  .card .sub { opacity: .8; font-size: 14px; margin-bottom: 18px; }
+  .card table { margin: 0 auto 18px; border-collapse: collapse; font-size: 14px; text-align: left; }
+  .card td { padding: 3px 8px; } .card td:first-child { text-align: right; opacity: .75; white-space: nowrap; }
+  .card kbd { display: inline-block; min-width: 18px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); font: 600 12px/18px -apple-system, Helvetica, Arial, sans-serif; text-align: center; }
+  .card .go { font-size: 16px; font-weight: 700; animation: blink 1.4s ease-in-out infinite; }
+  .card .big { font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums; margin: 4px 0; }
+  .card .best { opacity: .8; font-size: 15px; margin-bottom: 16px; }
+  .card .nb { color: #ffd84a; font-weight: 800; margin-bottom: 6px; }
+  @keyframes blink { 50% { opacity: .45; } }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #cfd5db;
              font: 15px -apple-system, Helvetica, Arial, sans-serif; color: #333; transition: opacity .6s; }
 </style>
@@ -26,6 +62,22 @@
 <body>
 <div id="loading">Building the boardwalk…</div>
 <div id="hud"></div>
+<div id="ghud"><div class="tl"><div id="gScore">0</div><div id="gCombo"></div></div>
+  <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
+    <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div></div>
+<div id="gTitle" class="screen"><div class="card"><h1>BOARDWALK SKATER</h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
+  <table>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd></td><td>Change lane</td></tr>
+    <tr><td><kbd>↑</kbd> / <kbd>Space</kbd></td><td>Tap to ollie; hold longer to jump higher and throw a trick</td></tr>
+    <tr><td>by height</td><td>kickflip → heelflip → hardflip → 360 flip → impossible</td></tr>
+    <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> in the air</td><td>Switch feet (front ↔ back)</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Pause</td></tr>
+  </table>
+  <div class="sub">Higher jumps cost more energy. Jump cans and cones for extra points; pizza and poop make you slip; people don't move for you.</div>
+  <div class="go">Press Enter or Space to start</div><div class="best" id="gTitleBest" style="margin:10px 0 0"></div></div></div>
+<div id="gOver" class="screen"><div class="card"><h2>GAME OVER</h2><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
+  <div class="best">Best <span id="gOverBest">0</span></div><div class="go">Press Enter or Space to skate again</div></div></div>
+<div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -48,6 +100,82 @@ const QUALITY = {
              characters: { rigsPerSex: 24, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260, cyclists: 10, dogs: 6 } },
 };
 const Q = QUALITY[PLATFORM];
+
+// ---- GAME: every gameplay tuning value (phase 2) -------------------------------------------
+const GAME = {
+  lanes: { count: 4, width: 2.1,          // 4 lanes across the 9 m boardwalk, centres at ±1.05 / ±3.15 m
+           carveRatio: 0.3,                // sideways speed of a lane carve as a share of forward speed (0.3 → 0.9 s per lane at 27 km/h, 0.45 s at 58 km/h)
+           carveMin: 0.4, carveMax: 1.2,   // s limits on one carve
+           recoverTime: 0.3,               // s of counter-lean after a carve
+           lean: 0.12, camRoll: 0.08 },    // body/board lean (rad) while sliding, and the share of it the camera rolls
+  speed: { title: 4.5, start: 7.5,         // m/s on the title screen / at the start of a run
+           ramp: 0.09,                     // m/s gained per second of play
+           max: 16,                        // m/s cap (~58 km/h)
+           hitFactor: 0.55, slipFactor: 0.6, bailFactor: 0.7,    // speed multipliers on hit / slip / wipeout
+           recoverRate: 2.2,               // m/s² back up to the ramped speed
+           crashDecel: 9 },
+  jump: { minHeight: 0.4,                  // m apex of a quick tap ollie (board bottom)
+          maxHeight: 1.05,                 // m apex of a fully charged ollie
+          chargeTime: 0.32,                // s of holding the jump key for full height
+          maxHold: 0.55,                   // s after which a held jump pops on its own
+          minCrouch: 0.05,                 // s shortest wind-up before the pop
+          gravity: 12.4,                   // m/s²: 0.4 m → 0.51 s in the air, 1.05 m → 0.82 s
+          landTime: 0.26,                  // s knee flex on landing (can jump again straight away)
+          coyote: 0.1 },                   // s grace: a jump pressed just after touching a slip hazard still clears it
+  tricks: { ollieBelow: 0.2,               // charge share below which a jump is a plain ollie (quick taps)
+            order: ['kickflip', 'heelflip', 'hardflip', 'threeSixty', 'impossible'],   // tricks by jump height, lowest → highest
+            durShare: 0.72,                // a trick takes this share of the jump's air time, so it always finishes before landing
+            delay: 0.05,                   // s after the pop before the board starts to flip
+            kickflip: { pts: 150 }, heelflip: { pts: 175 }, hardflip: { pts: 250 }, threeSixty: { pts: 325 }, impossible: { pts: 400 } },
+  energy: { max: 100, regen: 6,            // energy per second, always refilling
+            ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
+  health: { max: 100, hit: 34,             // damage from running into an obstacle (3 hits = game over)
+            slip: 10,                      // damage from slipping on pizza or poop (not if you jump within the coyote window)
+            fall: 20 },                    // damage from a wipeout
+  hazards: { shake: 0.3, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit
+  skaterBox: { w: 0.5, d: 0.9, h: 1.75 },  // collision box (m)
+  obstacles: {                             // AABB sizes (m); clear = board height needed to pass over (null = can't be jumped)
+    ped:        { kind: 'solid', w: 0.6, h: 1.8, d: 0.5, clear: null },
+    pedDog:     { kind: 'solid', w: 0.7, h: 1.8, d: 2.3, clear: null },   // owner plus the dog walking ahead on its lead
+    bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null },   // cyclist riding along a lane
+    skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null },   // skater cruising along a lane
+    selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer standing still, phone up
+    beg:        { kind: 'solid', w: 1.0, h: 1.3, d: 1.0, clear: null },   // sitting on a crate asking for change (outer lanes only)
+    smoke:      { kind: 'solid', w: 1.0, h: 1.3, d: 1.0, clear: null },   // sitting on a crate, smoking (outer lanes only)
+    drums:      { kind: 'solid', w: 2.3, h: 1.3, d: 2.3, clear: null },   // three drummers in a circle filling the lane (outer lanes only)
+    can:        { kind: 'solid', w: 1.0, h: 0.66, d: 0.7, clear: 0.5 },
+    cones:      { kind: 'solid', w: 1.35, h: 0.72, d: 0.9, clear: 0.55 },
+    pizza:      { kind: 'slip', w: 0.9, h: 0.05, d: 1.0, clear: 0.12 },
+    poop:       { kind: 'slip', w: 0.7, h: 0.12, d: 0.7, clear: 0.12 },
+    crossBike:  { kind: 'solid', w: 1.8, h: 1.8, d: 0.7, clear: null },   // w is along x: they ride across the lanes
+    crossSkate: { kind: 'solid', w: 1.0, h: 1.8, d: 0.7, clear: null },
+  },
+  spawn: { ahead: 70,                      // m ahead of the skater that rows are spawned
+           despawn: 8,                     // m behind the skater that they are recycled
+           startDelay: 45,                 // m of open boardwalk before the first row
+           minGap: 13,                     // m minimum between rows
+           reaction: 0.55,                 // s; gap ≥ speed × (reaction + 3 carves + recovery)
+           gapJitter: { start: [1.0, 1.45], end: [1.0, 1.05] },   // random multiplier on that gap, at the start → at full difficulty
+           rowJitter: 1.2,                 // m of z scatter inside a row
+           rampDist: 1500,                 // m (~4,900 ft) over which obstacles steadily ramp up to full difficulty
+           twoLane: [0.2, 0.75], threeLane: [0.0, 0.45],  // chance of a 2nd / 3rd blocked lane, start → full difficulty
+           maxPeoplePerRow: 3,             // people (any kind) per row; extra picks become cans or cones
+           towardChance: 0.5,              // share of walkers/riders coming toward you (the rest go your way, slower than you)
+           bikeSpeed: [4.0, 6.0], skaterSpeed: [2.8, 3.8],   // m/s of riders moving along the lanes
+           // 70% people (first eight) / 30% objects (last four)
+           weights: { ped: 0.22, pedDog: 0.1, bike: 0.1, skater: 0.09, selfie: 0.08, beg: 0.04, smoke: 0.04, drums: 0.03, can: 0.09, cones: 0.08, pizza: 0.065, poop: 0.065 },
+           crossFirst: [10, 18], crossEvery: [14, 30],   // s until the first crossing cyclist/skater, then between them
+           crossSkateChance: 0.4, crossBikeSpeed: [3.6, 5.0], crossSkateSpeed: [2.6, 3.4],   // m/s across the boardwalk
+           crossEdge: 8.6 },               // |x| where crossing traffic appears / leaves
+  crowd: { sideWalkers: 0.015 },           // share of the off-lane crowd kept (walkers, cyclists, sitters, performers): 0.015 ≈ as many people per side
+                                           // strip as per lane; 1 = the full phase-1 crowd
+  score: { perMetre: 1, ollieMin: 25, ollieMax: 100,   // ollie points scale with jump height
+           overObstacle: 2,                // multiplier for a jump that cleared an obstacle
+           clear: 75, comboMax: 8, comboWindow: 3.0,
+           switchBonus: 50 },              // landing after swapping feet in the air (↑/↓)
+  overDelay: 0.9,                          // s before the game-over screen appears
+};
+Q.characters.laneClear = GAME.lanes.count / 2 * GAME.lanes.width + 0.1;   // ambient crowd stays outside the lanes
 const CHUNK_LEN = 40;
 const NCH = Q.chunks;
 const F = 9.5;                 // building front line (x)
@@ -65,6 +193,7 @@ const pick = (arr) => arr[Math.floor(R() * arr.length)];
 const chance = (p) => R() < p;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
 
 function hash2(ix, iy, s) { let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(s, 1442695041)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
@@ -971,7 +1100,17 @@ function buildTemplate(kind, seed) {
   else if (kind === 'cafe') { cafe(b, props, -4, 30); stallsSeg(b, props, 0, -4); stallsSeg(b, props, -34, -40); backRow(b, props, 0, -40, F + 14); }
   else if (kind === 'mural') { muralBlock(b, props, 0, 26); stallsSeg(b, props, -26, -40); backRow(b, props, -26, -40, F + 5.6); backRow(b, props, 0, -26, F + 13.2); }
   else if (kind === 'corner') { cornerBlock(b, props); }
-  const group = b.build(); return { kind, group, props, inUse: false };
+  const group = b.build(); return { kind, group, props, inUse: false, perches: roofPerches(group) };
+}
+// spots on roofs and awnings where gulls can land, found once per template by casting rays straight down
+const _rc = new THREE.Raycaster(), _down = new THREE.Vector3(0, -1, 0);
+function roofPerches(group) {
+  const out = []; group.updateMatrixWorld(true);
+  for (let z = -3; z > -40; z -= 6.5) for (const x of [F + 1.2, F + 4.0]) {
+    _rc.set(new THREE.Vector3(x, 60, z), _down); const hit = _rc.intersectObject(group, true)[0];
+    if (hit && hit.point.y > 2.5 && hit.face && Math.abs(hit.face.normal.y) > 0.5) out.push({ x: hit.point.x, y: hit.point.y, z: hit.point.z });
+  }
+  return out;
 }
 
 // ---- left-side extras: stone restroom building --------------------------------------------
@@ -1196,9 +1335,13 @@ class Chunk {
     if (index % 4 === 3) { const r = RESTROOMS.find((x) => !x.inUse); if (r) { r.inUse = true; this.rest = r; r.group.position.set(rand(-6, 6), 0, rand(-8, 8)); this.group.add(r.group); } }
     this.flag.visible = index % 2 === 0; this.flag.position.x = this.plaza ? 17.4 : 0;
     this.layoutProps(z0);
+    for (const p of this.tpl.perches) this.perches.push({ x: p.x, y: p.y, z: z0 + p.z, busy: false, dead: false });
   }
   layoutProps(z0) {
     const s = this.slot; for (const k in IM) pBegin(IM[k], s);
+    // gull landing spots (computed from the layout; no extra random draws, so the layout itself is unchanged)
+    if (this.perches) for (const p of this.perches) p.dead = true;
+    this.perches = []; const perch = (x, y, z) => this.perches.push({ x, y, z, busy: false, dead: false });
     const busy = phaseState.crowd > 0.35;
     // palms in loose rows on the grass/sand
     const rows = [-10.8, -15.5, -21, -28, -36];
@@ -1210,17 +1353,18 @@ class Chunk {
       _v.set(1.1, 1.0, 0).applyMatrix4(tm);
       const cm = M4(_v.x, _v.y - 0.15, _v.z, rand(0, 6.28), feather ? rand(0.9, 1.15) : rand(1.25, 1.6)); _C.setHSL(rand(0.14, 0.2), rand(0.3, 0.6), rand(0.75, 1.0));
       if (feather) { pPush(IM.crownFeather, cm, _C); } else { pPush(IM.crownFan, cm, _C); }
+      perch(_v.x, _v.y + 0.25, _v.z);
       blob(x, z, 1.1, 1.1);
     }
     if (this.plaza) for (const [px, pz] of [[7.0, -12], [8.2, -27], [6.8, -33]]) { const H = rand(18, 24), z = z0 + pz; const tm = M4(px, 0, z, Math.PI + rand(-0.3, 0.3), 1, H, 1, rand(-0.04, 0.04));
       pPush(IM.trunk, tm, WHITE); _v.set(1.1, 1.0, 0).applyMatrix4(tm); pPush(IM.crownFan, M4(_v.x, _v.y - 0.15, _v.z, rand(0, 6.28), rand(1.25, 1.5)), WHITE); blob(px, z, 1.1, 1.1); }
     // lamps, cans, benches along the left edge
-    for (const lz of [-8, -28]) { const z = z0 + lz + rand(-1, 1); pPush(IM.lamp, M4(-7.15, 0, z, 0)); pPush(IM.globe, M4(-7.15, 0, z, 0)); pPush(IM.pool, M4(-7.15, 0.03, z, 0, 9, 1, 9)); blob(-7.15, z, 0.8, 0.8);
-      if (chance(0.85)) { const cz = z + rand(1.2, 2.4); pPush(IM.can, M4(-7.95, 0, cz, rand(0, 6)), _C.setHSL(0.62, 0.4, rand(0.85, 1))); blob(-7.95, cz, 0.9, 0.9);
+    for (const lz of [-8, -28]) { const z = z0 + lz + rand(-1, 1); pPush(IM.lamp, M4(-7.15, 0, z, 0)); perch(-7.65, 7.62, z); perch(-6.65, 7.62, z); pPush(IM.globe, M4(-7.15, 0, z, 0)); pPush(IM.pool, M4(-7.15, 0.03, z, 0, 9, 1, 9)); blob(-7.15, z, 0.8, 0.8);
+      if (chance(0.85)) { const cz = z + rand(1.2, 2.4); pPush(IM.can, M4(-7.95, 0, cz, rand(0, 6)), _C.setHSL(0.62, 0.4, rand(0.85, 1))); blob(-7.95, cz, 0.9, 0.9); perch(-7.95, 1.04, cz);
         if (chance(0.35)) { pPush(IM.bag, M4(-8.4, 0, cz + 0.5, rand(0, 6), rand(0.8, 1.2)), _C.set(pick(['#222', '#1a1a1a', '#e8e8e8']))); } } }
     for (let k = 0; k < randi(1, 3); k++) { const x = rand(-22, -10), z = z0 - rand(0, 40); pPush(IM.can, M4(x, -0.06, z, rand(0, 6)), _C.setHSL(0.62, 0.4, rand(0.85, 1))); blob(x, z, 0.9, 0.9); }
     if (chance(0.5)) { const z = z0 - rand(5, 35); pPush(IM.can, M4(8.9, 0, z, rand(0, 6)), _C.setHSL(0.62, 0.4, 1)); blob(8.9, z, 0.9, 0.9); }
-    const benchZ = []; for (let k = 0; k < randi(1, 3); k++) { const z = z0 - rand(2, 38); pPush(IM.bench, M4(-6.75, 0, z, Math.PI / 2)); blob(-6.75, z, 1.0, 2.4); benchZ.push(z); }
+    const benchZ = []; for (let k = 0; k < randi(1, 3); k++) { const z = z0 - rand(2, 38); pPush(IM.bench, M4(-6.75, 0, z, Math.PI / 2)); blob(-6.75, z, 1.0, 2.4); benchZ.push(z); perch(-6.99, 0.99, z + 0.5); }
     if (chance(0.5)) { const z = z0 - 8 + rand(-0.6, 0.6); pPush(IM.bike, M4(-7.45, 0, z, 0.05, 1, 1, 1, 0, 0.18), _C.setHSL(rand(0, 1), 0.6, 0.6)); blob(-7.45, z, 0.5, 1.4); }
     // vendor canopies + art tables (busy phases only; decided at spawn time)
     if (busy && this.index % 3 !== 0) { const n = randi(2, PER.tent); let z = z0 - rand(2, 6);
@@ -1253,12 +1397,20 @@ class Chunk {
     // rest of the layout keeps its random sequence. minCrowd gates each one by the lighting phase's crowd level.
     const sid = this.index * 977; this.stations = [];
     for (const z of benchZ) for (const dz of [-0.45, 0.45]) if (chance(0.55)) this.stations.push({ t: 'sit', x: -6.75, y: 0.52, z: z + dz, ry: Math.PI / 2, seed: sid + 7 + this.stations.length, minCrowd: 0.05 });
-    for (let k = 0; k < randi(1, 3); k++) this.stations.push({ t: 'lie', x: rand(-21, -9.5), y: -0.065, z: z0 - rand(2, 38), ry: rand(0, 6.28), seed: sid + 101 + k, minCrowd: 0.45 });
-    if (this.index % 2 === 1) { const px = chance(0.5) ? -5.3 : 3.9, pz = z0 - rand(8, 32), act = pick(['dance', 'talk', 'spell']), ry = px < 0 ? Math.PI / 2 : -Math.PI / 2;
+    // performers, their audience and selfie-takers sit outside the four play lanes (|x| > 4.3)
+    if (this.index % 2 === 1) { const px = chance(0.5) ? -8.6 : 7.6, pz = z0 - rand(8, 32), act = pick(['dance', 'talk', 'spell']), ry = px < 0 ? Math.PI / 2 : -Math.PI / 2;
       this.stations.push({ t: 'perform', act, x: px, y: 0, z: pz, ry, seed: sid + 201, minCrowd: 0.3 });
       for (let k = 0; k < randi(2, 4); k++) { const ang = ry + rand(-0.8, 0.8), d = rand(1.9, 2.7), sx = px + Math.sin(ang) * d, sz = pz + Math.cos(ang) * d;
         this.stations.push({ t: 'watch', x: sx, y: 0, z: sz, ry: Math.atan2(px - sx, pz - sz), seed: sid + 211 + k, minCrowd: 0.5 }); } }
-    if (chance(0.6)) this.stations.push({ t: 'selfie', x: rand(-3.5, 3), y: 0, z: z0 - rand(4, 36), ry: rand(-0.6, 0.6) + (chance(0.5) ? 0 : Math.PI), seed: sid + 301, minCrowd: 0.3 });
+    if (chance(0.6)) this.stations.push({ t: 'selfie', x: chance(0.5) ? rand(-7.2, -5.0) : rand(5.0, 8.4), y: 0, z: z0 - rand(4, 36), ry: rand(-0.6, 0.6) + (chance(0.5) ? 0 : Math.PI), seed: sid + 301, minCrowd: 0.3 });
+    // seated regulars just off the lanes, facing the walk: someone asking for change, a smoker, and now and then a drum circle.
+    // (always: they are kept even when crowd.sideWalkers thins the rest of the side crowd)
+    const SEAT_Y = 0.4, sideX = () => chance(0.5) ? -rand(4.9, 5.5) : rand(5.0, 5.8), face = (x) => (x < 0 ? Math.PI / 2 : -Math.PI / 2);
+    if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'beg', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x), seed: sid + 401, minCrowd: 0.05, always: true }); }
+    if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'smoke', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x) + rand(-0.4, 0.4), seed: sid + 411, minCrowd: 0.05, always: true }); }
+    if (this.index % 3 === 1) { const right = chance(0.5), cx = right ? 6.9 : -10.6, cy = right ? 0 : -0.065, cz = z0 - rand(8, 32), n = randi(4, 6), a0 = rand(0, 6.28);
+      for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2, x = cx + Math.sin(ang) * 1.15, z = cz + Math.cos(ang) * 1.15;
+        this.stations.push({ t: 'drum', x, y: cy + SEAT_Y, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 421 + k, minCrowd: 0.05, always: true }); } }
   }
 }
 const chunks = []; for (let i = 0; i < NCH; i++) chunks.push(new Chunk(i));
@@ -1328,12 +1480,12 @@ const PHASES = [
   { name: 'Marine-layer fog', sunEl: 40, sunAz: 175, lightEl: 55, sunColor: C('#e9edf2'), sunI: 0.45, hemiSky: C('#e6ebf0'), hemiGround: C('#a29f98'), hemiI: 1.0, envI: 0.75,
     zenith: C('#cfd6de'), horizon: C('#e4e7ea'), cloud: 0.0, cloudLit: C('#ffffff'), cloudShade: C('#d0d5da'), overcast: 1, fogColor: C('#dde1e5'), fogD: 0.0085, fogH: 0.016,
     horizonFog: 1.0, skyI: 1.35, sunDisc: 0, sunGlow: 0.15, exposure: 1.0, bloom: 0.12, godrays: 0, night: 0, wet: 1, crowd: 0.07, open: 0, shadowR: 9, shadowI: 0.55, envGround: C('#9d9a92') },
-  { name: 'Blue hour', sunEl: -5, sunAz: 245, lightEl: 30, sunColor: C('#7088c4'), sunI: 0.25, hemiSky: C('#4a66a8'), hemiGround: C('#1d2230'), hemiI: 0.5, envI: 0.5,
+  { name: 'Blue hour', sunEl: -5, sunAz: 245, lightEl: 30, sunColor: C('#7088c4'), sunI: 0.25, hemiSky: C('#4a66a8'), hemiGround: C('#2e3549'), hemiI: 0.85, envI: 0.7,
     zenith: C('#0c1d4c'), horizon: C('#6d7fb6'), cloud: 0.22, cloudLit: C('#6a74a0'), cloudShade: C('#2a3460'), overcast: 0, fogColor: C('#3f4f7c'), fogD: 0.0065, fogH: 0.035,
-    horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.35, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.35, open: 0.7, shadowR: 4, shadowI: 0.6, envGround: C('#22262f') },
+    horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.45, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.35, open: 0.7, shadowR: 4, shadowI: 0.45, envGround: C('#22262f') },
 ];
 const phaseState = {}; for (const k in PHASES[0]) phaseState[k] = PHASES[0][k] && PHASES[0][k].isColor ? PHASES[0][k].clone() : PHASES[0][k];
-const PHASE_LEN = 20, BLEND_START = 14;
+const PHASE_LEN = 200, BLEND_START = 140;   // s per phase; the last 60 s blend into the next
 let cycleT = 0, cyclePaused = false;
 function computePhase() {
   const n = PHASES.length; const t = ((cycleT % (PHASE_LEN * n)) + PHASE_LEN * n) % (PHASE_LEN * n);
@@ -1362,7 +1514,7 @@ function applyPhase(dt) {
   oceanMat.color.copy(p.fogColor).multiplyScalar(0.35).lerp(C('#1d3f55'), 0.5);
   if (bloomPass) bloomPass.strength = p.bloom;
   // refresh environment map: often while blending, rarely when holding
-  envTimer -= dt; const key = phaseState.i * 10 + Math.round(phaseState.blend * 8);
+  envTimer -= dt; const key = phaseState.i * 100 + Math.round(phaseState.blend * 30);
   if (key !== lastEnvKey && envTimer <= 0) { updateEnv(); lastEnvKey = key; envTimer = 0.4; }
 }
 
@@ -1410,19 +1562,21 @@ const filmPass = new ShaderPass({
 composer.addPass(filmPass);
 
 // =====================================================================================
-// SKATER (placeholder) + CAMERA
+// SKATER + CAMERA
 // =====================================================================================
 const skater = new THREE.Group();   // board + rigged rider are built by characters.js
 scene.add(skater);
-const S = { z: -12, x: 0.8, speed: 6.5, moving: true, t: 0 };
+const S = { z: -12, x: 1.05, speed: 4.5, moving: true, t: 0, pose: null, camRoll: 0, hidden: false };   // game.js drives x/z/speed/pose
 let camMode = 'chase';            // 'chase' | 'ref' | 'free'
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(0, 2.4, -6);
 const REF_POSE = { x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, fov: 62 };
 function updateCamera(dt) {
   if (camMode === 'chase') {
-    camera.fov = 60; const k = 1 - Math.exp(-dt * 4);
-    camPos.lerp(_v.set(S.x * 0.6 + 0.2, 2.35, S.z + 5.0), k); camera.position.copy(camPos);
-    camTarget.set(S.x * 0.8, 1.25, S.z - 8); camera.lookAt(camTarget);
+    // same framing as phase 1 (its lerp settled ~1.6 m behind at 6.5 m/s); z is now locked so fast runs don't drift back
+    camera.fov = 60 + clamp((S.speed - 8) * 0.35, 0, 3); const k = 1 - Math.exp(-dt * 4);
+    camPos.x += (S.x * 0.6 + 0.2 - camPos.x) * k; camPos.y += (2.35 - camPos.y) * k; camPos.z = S.z + 6.6 + Math.max(0, S.speed - 6.5) * 0.06; camera.position.copy(camPos);
+    camTarget.set(S.x * 0.8, 1.25 + (S.pose && S.pose.air ? S.pose.air * 0.25 : 0), S.z - 8); camera.lookAt(camTarget); camera.rotateZ(S.camRoll);
+    if (S.shake > 0) { const a = S.shake * 0.12; camera.position.x += (Math.random() - 0.5) * a; camera.position.y += (Math.random() - 0.5) * a; camera.rotateZ((Math.random() - 0.5) * a * 0.2); }   // jolt on a hit
   } else if (camMode === 'ref') {
     camera.fov = REF_POSE.fov; camera.position.set(REF_POSE.x, REF_POSE.y, REF_POSE.z);
     camera.rotation.set(REF_POSE.pitch * Math.PI / 180, -REF_POSE.yaw * Math.PI / 180, 0, 'YXZ');
@@ -1455,10 +1609,94 @@ function updatePeople(dt, t) {
     IMP.lower.setMatrixAt(i, m); IMP.upper.setMatrixAt(i, m); IMP.head.setMatrixAt(i, m); }
   for (const k in IMP) { IMP[k].count = n; IMP[k].instanceMatrix.needsUpdate = true; if (!IMP[k].userData.colInit) { IMP[k].instanceColor.needsUpdate = true; IMP[k].userData.colInit = true; } }
 }
-function updateBirds(t) {
-  let any = false;
-  for (const c of chunks) for (const b of c.birds) { const peck = Math.max(0, Math.sin(t * 2.2 + b.ph)) ; b.mesh.setMatrixAt(b.idx, M4(b.x, 0, b.z, b.yaw + Math.sin(t * 0.7 + b.ph) * 0.4, b.s, b.s, b.s, peck * 0.45, 0)); any = true; }
+function updateBirds(t, dt) {
+  let any = false; const reach = 3 + S.speed * 0.5;   // faster skater, earlier take-off
+  for (const c of chunks) for (const b of c.birds) {
+    if (b.gone) continue; any = true;
+    // ground birds just ahead of the skater take off (a flock goes in a ragged burst, not all on one frame)
+    const dx = b.x - S.x, dz = b.z - S.z;
+    if (b.fleeT === undefined && dz < 1.5 && dz > -reach && Math.abs(dx) < 2.8) b.fleeT = Math.random() * 0.3;
+    if (b.fleeT !== undefined && (b.fleeT -= dt) <= 0) { b.gone = true; b.mesh.setMatrixAt(b.idx, ZERO_M); takeOff(b.mesh === IM.gull ? 'gull' : 'pigeon', b.x, b.z, dx, b.s); continue; }
+    const peck = Math.max(0, Math.sin(t * 2.2 + b.ph)); b.mesh.setMatrixAt(b.idx, M4(b.x, 0, b.z, b.yaw + Math.sin(t * 0.7 + b.ph) * 0.4, b.s, b.s, b.s, peck * 0.45, 0)); }
   if (any) { IM.pigeon.instanceMatrix.needsUpdate = true; IM.gull.instanceMatrix.needsUpdate = true; }
+}
+
+// =====================================================================================
+// FLYING BIRDS: pigeons/gulls that took off from the ground, plus a seagull flock that wanders
+// the sky and lands on lamps, cans, benches, palm crowns and roofs (chunk.perches)
+// =====================================================================================
+const FLY_N = 48, GULL_N = 9;
+const mr = (a, b) => a + (b - a) * Math.random();   // runtime randomness (keeps the seeded layout RNG untouched)
+const flyBodyGeo = mergeColored([
+  [xform(new THREE.SphereGeometry(1, 10, 7), 0, 0, 0, 0, 0, 0, 0.1, 0.09, 0.24), '#ffffff'],
+  [xform(new THREE.SphereGeometry(0.065, 8, 6), 0, 0.07, 0.2), '#ffffff'],
+  [xform(new THREE.ConeGeometry(0.018, 0.08, 5), 0, 0.06, 0.29, Math.PI / 2, 0, 0), '#e8b030'],
+  [xform(boxG(0.12, 0.02, 0.14), 0, 0.01, -0.27), '#c9ced4'],
+  [xform(cylG(0.008, 0.008, 0.12, 4), 0.03, -0.11, 0), '#c98a5a'], [xform(cylG(0.008, 0.008, 0.12, 4), -0.03, -0.11, 0), '#c98a5a']]);
+const flyWingGeo = (() => {   // right wing, shoulder at the origin, tapering and swept back, dark tip
+  const g = new THREE.BoxGeometry(0.5, 0.012, 0.16, 4, 1, 1); g.translate(0.25, 0, 0); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i); p.setZ(i, p.getZ(i) * (1 - 0.55 * smooth(0.15, 0.5, x)) - x * 0.12); }
+  g.computeVertexNormals(); const pg = prep(g, '#b9c0c8'); const c = pg.attributes.color, pp = pg.attributes.position;
+  for (let i = 0; i < pp.count; i++) if (pp.getX(i) > 0.4) c.setXYZ(i, 0.08, 0.08, 0.09);
+  return pg; })();
+const flyWingGeoL = flyWingGeo.clone().applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1));
+const flyMat = vcol({ roughness: 0.8, side: THREE.DoubleSide });
+const FLYM = [flyBodyGeo, flyWingGeo, flyWingGeoL].map((g) => { const m = new THREE.InstancedMesh(g, flyMat, FLY_N); m.count = 0; m.frustumCulled = false; m.castShadow = true;
+  m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FLY_N * 3).fill(1), 3); scene.add(m); return m; });
+const FLY = []; for (let i = 0; i < FLY_N; i++) FLY.push({ on: false, kind: 'gull', state: 'soar', p: new THREE.Vector3(), v: new THREE.Vector3(), tgt: new THREE.Vector3(), perch: null, t: 0, ph: Math.random() * 6, s: 1, yaw: 0, bank: 0, flap: 1 });
+function newFlier(kind) { const f = FLY.find((b) => !b.on); if (!f) return null; Object.assign(f, { on: true, kind, perch: null, t: 0, s: kind === 'gull' ? mr(0.95, 1.1) : mr(0.62, 0.72), flap: 1 }); return f; }
+function takeOff(kind, x, z, dx, s) {
+  const f = newFlier(kind); if (!f) return; f.state = 'flee'; f.p.set(x, 0.15, z); if (s) f.s *= s;
+  f.v.set(Math.sign(dx || mr(-1, 1)) * mr(1.5, 3.2) + mr(-0.8, 0.8), mr(2.6, 4.0), -mr(1.5, 4.5)); f.yaw = Math.atan2(f.v.x, f.v.z);
+}
+function soarTarget(f) { f.tgt.set(mr(-50, 20), mr(10, 32), camera.position.z - mr(10, 150)); }
+function spawnSoaring(f) { f.state = 'soar'; f.p.set(mr(-45, 15), mr(14, 30), camera.position.z - mr(60, 170)); const a = mr(0, 6.28); f.v.set(Math.sin(a) * 7, 0, Math.cos(a) * 7); soarTarget(f); f.t = mr(2, 10); }
+function pickPerch() {   // a free landing spot ahead of the camera (reservoir sample, no allocation)
+  const cz = camera.position.z; let pick = null, n = 0;
+  for (const c of chunks) if (c.perches) for (const p of c.perches) if (!p.busy && !p.dead && p.z < cz - 20 && p.z > cz - 140 && Math.random() * ++n < 1) pick = p;
+  return pick;
+}
+const _fd = new THREE.Vector3(), _fq = new THREE.Quaternion(), _fe = new THREE.Euler(), _fm = new THREE.Matrix4(), _wm = new THREE.Matrix4(), _fs = new THREE.Vector3(), _wo = new THREE.Vector3(), _wq = new THREE.Quaternion(), _we = new THREE.Euler();
+function steer(f, speed, turn, dt) { _fd.subVectors(f.tgt, f.p); const d = _fd.length(); _fd.multiplyScalar(speed / Math.max(d, 1e-3)); f.v.lerp(_fd, 1 - Math.exp(-dt * turn)); return d; }
+function updateFliers(dt, t) {
+  const cz = camera.position.z; let gulls = 0;
+  for (const f of FLY) if (f.on && f.kind === 'gull' && f.state !== 'leave') gulls++;
+  for (; gulls < GULL_N; gulls++) { const f = newFlier('gull'); if (!f) break; spawnSoaring(f); }
+  let n = 0;
+  for (const f of FLY) {
+    if (!f.on) continue; let flapping = false;
+    switch (f.state) {
+      case 'flee': f.t += dt; f.v.y = Math.min(f.v.y + 2.5 * dt, 5); f.v.z -= 1.5 * dt; flapping = true;
+        if (f.t > 2.2) { f.state = f.kind === 'gull' && gulls <= GULL_N + 2 ? 'soar' : 'leave'; f.t = mr(3, 10); if (f.state === 'soar') soarTarget(f); else f.t = 0; } break;
+      case 'leave': f.t += dt; f.v.y = Math.min(f.v.y + dt, 4); flapping = f.v.y > 1;
+        if (f.t > 6 || f.p.distanceTo(camera.position) > 140) f.on = false; break;
+      case 'soar': { const d = steer(f, 7.5, 1.2, dt); flapping = f.v.y > 0.4; if (d < 8) soarTarget(f);
+        f.t -= dt; if (f.t <= 0) { const p = pickPerch(); if (p) { p.busy = true; f.perch = p; f.state = 'approach'; } else f.t = mr(2, 5); } break; }
+      case 'approach': { const p = f.perch; if (p.dead) { p.busy = false; f.perch = null; f.state = 'soar'; soarTarget(f); f.t = mr(3, 8); break; }
+        f.tgt.set(p.x, p.y + 0.17 * f.s, p.z); const dist = f.p.distanceTo(f.tgt); steer(f, clamp(dist * 1.1, 1.2, 9), dist < 6 ? 5 : 2, dt); flapping = dist < 3 || f.v.y > 0.4;
+        if (dist < 0.3) { f.p.copy(f.tgt); f.v.set(0, 0, 0); f.state = 'perch'; f.t = mr(4, 16); } break; }
+      case 'perch': { const p = f.perch; f.t -= dt; const dx = p.x - S.x, dz = p.z - S.z, scared = p.y < 2.5 && dx * dx + dz * dz < 36;
+        if (scared || f.t <= 0 || p.dead || p.z > cz + 25) { p.busy = false; f.perch = null; f.state = 'flee'; f.t = 0.6; f.v.set(Math.sign(dx || 1) * mr(1, 2.5), mr(2.5, 3.5), -mr(1, 3)); } break; }
+    }
+    if (f.state !== 'perch') f.p.addScaledVector(f.v, dt);
+    // fell behind the fast skater: reappear ahead
+    if ((f.state === 'soar' || f.state === 'approach') && f.p.z > cz + 30) { if (f.perch) { f.perch.busy = false; f.perch = null; } spawnSoaring(f); }
+    // pose: heading from velocity, bank into turns, flap or glide; folded wings when perched
+    const hv = Math.hypot(f.v.x, f.v.z);
+    if (f.state !== 'perch' && hv > 0.3) { const yaw = Math.atan2(f.v.x, f.v.z); let dy = yaw - f.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      f.bank = lerp(f.bank, clamp(-dy / Math.max(dt, 1e-3) * 0.35, -0.6, 0.6), 1 - Math.exp(-dt * 4)); f.yaw += dy * (1 - Math.exp(-dt * 8)); }
+    const pitch = f.state === 'perch' ? 0 : -Math.atan2(f.v.y, Math.max(hv, 0.5)) * 0.6;
+    f.flap = lerp(f.flap, flapping ? 1 : 0, 1 - Math.exp(-dt * 6)); f.ph += dt * lerp(4, f.state === 'flee' ? 20 : 13, f.flap);
+    _fe.set(pitch, f.yaw, f.state === 'perch' ? 0 : f.bank, 'YXZ'); _fq.setFromEuler(_fe); _fm.compose(f.p, _fq, _fs.setScalar(f.s));
+    FLYM[0].setMatrixAt(n, _fm);
+    for (let w = 0; w < 2; w++) { const side = w ? -1 : 1;   // instance mesh 1 = right wing, 2 = left wing
+      if (f.state === 'perch') { _we.set(0, side * 1.35, -side * 0.25, 'YXZ'); _fs.setScalar(0.55); }
+      else { const a = f.flap * Math.sin(f.ph) * 0.95 + (1 - f.flap) * (0.1 + Math.sin(t * 0.8 + f.ph) * 0.05) + 0.08; _we.set(0, 0, side * a); _fs.setScalar(1); }
+      _wq.setFromEuler(_we); _wm.compose(_wo.set(side * 0.07, 0.035, 0.03), _wq, _fs); FLYM[1 + w].setMatrixAt(n, _wm.premultiply(_fm)); }
+    const shade = f.kind === 'gull' ? 1 : 0.55; for (const m of FLYM) m.instanceColor.setXYZ(n, shade, shade * 1.03, shade * 1.08);
+    n++;
+  }
+  for (const m of FLYM) { m.count = n; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
 }
 const _sp = new THREE.Vector3(), _fw = new THREE.Vector3(), _lm = new THREE.Matrix4(), _lmi = new THREE.Matrix4(), _ld = new THREE.Vector3(), _O = new THREE.Vector3();
 function updateShadowCam() {
@@ -1484,14 +1722,13 @@ function updatePost(t) {
 // =====================================================================================
 const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
-  if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }
+  if (game && game.keydown(e)) { e.preventDefault(); return; }
+  if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
   else if (e.key === 'p' || e.key === 'P') cyclePaused = !cyclePaused;
-  else if (e.key === ' ') S.moving = !S.moving;
   else if (e.key === 'o' || e.key === 'O') { if (gtaoPass) gtaoPass.enabled = !gtaoPass.enabled; }
-  else if ((e.key === 'j' || e.key === 'J') && chars) chars.trick('ollie');
-  else if ((e.key === 'k' || e.key === 'K') && chars) chars.trick('kickflip');
   else if (e.key === 'c' || e.key === 'C') { camMode = camMode === 'chase' ? 'ref' : 'chase'; if (camMode === 'ref') Object.assign(REF_POSE, { x: S.x, y: 1.7, z: S.z, yaw: 0, pitch: 2 }); }
 });
+window.addEventListener('keyup', (e) => { if (game) game.keyup(e); });
 // Adaptive resolution: pixel ratio floats between 1 and min(devicePixelRatio, 2) to hold ~60 fps.
 let renderScale = Math.min(window.devicePixelRatio, Q.pixelRatioMax, Q.startPixelRatio);
 const DRS = { acc: 0, n: 0, cool: 2 };
@@ -1514,16 +1751,18 @@ function updateHud(dt) {
   fpsAcc += dt; fpsN++; hudT -= dt;
   if (fpsAcc >= 1) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (hudT <= 0) { hudT = 0.25; const cs = chars ? chars.stats : null;
-    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">1-4 phase · P pause cycle · Space stop skater · J/K ollie/kickflip · C camera · O AO</span>`; }
+    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · P hold phase · H hitboxes · O AO · C camera</span>`; }
 }
 
 // Debug / screenshot hooks (used for the reference comparisons)
 window.__vb = {
   showSkater: false,   // keep the skater visible in the fixed 'ref' camera (close-up checks)
+  timeScale: 1,        // slow motion for animation checks
   setPhase(i, hold = true) { cycleT = i * PHASE_LEN; cyclePaused = hold; },
   ref(pose) { camMode = 'ref'; Object.assign(REF_POSE, pose); S.z = pose.z - 4; },
   chase() { camMode = 'chase'; },
   stop(v = true) { S.moving = !v; },
+  get game() { return game; },
   findKind(kind, from = 2) { for (let i = from; i < from + 200; i++) if (kindFor(i) === kind) return i; return -1; },
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
   get chars() { return chars; },
@@ -1540,7 +1779,7 @@ window.__vb = {
   // rAF-independent benchmark: N full frames back to back, GPU-synced by a 1px readback. Returns ms/frame.
   bench(n = 30) { const gl = renderer.getContext(), px = new Uint8Array(4); const step = () => { renderer.info.reset(); composer.render(1 / 60); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
     step(); step(); const t0 = performance.now(); for (let i = 0; i < n; i++) step(); const ms = (performance.now() - t0) / n; return { ms: +ms.toFixed(2), fps: +(1000 / ms).toFixed(1), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; },
-  dbg: { renderer, composer, scene, camera, sun, IM, IMP, chunks, MAT, PHASES, get gtao() { return gtaoPass; }, get bloom() { return bloomPass; }, godPass, filmPass, onResize, Q, setScale(s) { renderScale = s; onResize(); }, get scale() { return renderScale; } },
+  dbg: { renderer, composer, scene, camera, sun, IM, IMP, chunks, MAT, PHASES, S, REF_POSE, FLY, setCam(m) { camMode = m; }, get gtao() { return gtaoPass; }, get bloom() { return bloomPass; }, godPass, filmPass, onResize, Q, setScale(s) { renderScale = s; onResize(); }, get scale() { return renderScale; } },
 };
 
 // =====================================================================================
@@ -1551,30 +1790,33 @@ Object.defineProperty(clock, 'elapsedTime', { get() { return clock.getElapsed();
 let started = false;
 function frame(ts) {
   requestAnimationFrame(frame); clock.update(ts);
-  const rawDt = clock.getDelta(); updateResolution(rawDt); step(Math.min(rawDt, 0.05), clock.elapsedTime);
+  const rawDt = clock.getDelta(); updateResolution(rawDt); step(Math.min(rawDt, 0.05) * __vb.timeScale, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
 }
 function step(dt, t) {
+  if (game && game.paused) dt = 0;   // paused (Esc or hidden tab): the world holds still, rendering continues
   U.time.value = t;
   if (!cyclePaused) cycleT += dt;
   computePhase(); applyPhase(dt);
-  if (S.moving) { S.t += dt; S.z -= S.speed * dt; S.x = 0.8 + Math.sin(S.t * 0.5) * 0.9; }
-  skater.position.set(S.x, 0, S.z); skater.rotation.y = -Math.cos(S.t * 0.5) * 0.45 * 0.12 * (S.moving ? 1 : 0);
-  skater.visible = camMode === 'chase' || __vb.showSkater;
+  if (game) game.update(dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }
+  skater.position.set(S.x, 0, S.z);
+  skater.visible = (camMode === 'chase' || __vb.showSkater) && !S.hidden;
   updateCamera(dt);
   updateChunks(Math.min(camera.position.z, S.z));
   sky.position.copy(camera.position);
   ocean.position.z = camera.position.z;
   if (chars) chars.update(dt, t, phaseState); else updatePeople(dt, t);
-  updateBirds(t); updateShadowCam(); updatePost(t);
+  updateBirds(t, dt); updateFliers(dt, t); updateShadowCam(); updatePost(t);
   renderer.info.reset(); composer.render(dt);
   updateHud(dt);
 }
-let chars = null;
+let chars = null, game = null;
 loadMgr.onLoad = async () => {
   if (started) return; started = true;
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
   try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
+  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name }); }
+  catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);
   frame();
