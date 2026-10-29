@@ -72,7 +72,7 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `characters.js` — the rigged crowd, skater, cyclists and dogs (imported dynamically; if it fails to load, the scene
   falls back to the old block figures).
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
-- `textures/<asset_id>/` — Poly Haven CC0 maps at 2K (see `CREDITS.md`).
+- `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
 - `reference/` — the reference photos.
 
 ## How it's built

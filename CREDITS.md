@@ -4,7 +4,8 @@
 
 All photo textures come from [Poly Haven](https://polyhaven.com). Each asset page was checked and lists the
 license as **CC0** (public domain, no attribution required; credited here anyway). Files were fetched through the
-public API (`api.polyhaven.com/files/<id>`) at 2K JPG resolution, and each was checked against the API's md5.
+public API (`api.polyhaven.com/files/<id>`) at 2K JPG resolution, and each was checked against the API's md5. They
+are shipped downscaled to 1K (JPG quality 88) to keep the download small, about 11 MB for all seven sets.
 Maps used: diffuse, OpenGL normal (`nor_gl`), roughness, and AO where offered.
 
 | Asset | Used for | Author(s) | Page | License |
@@ -16,9 +17,9 @@ Maps used: diffuse, OpenGL normal (`nor_gl`), roughness, and AO where offered.
 | Grass Ground (`grass_ground`) | Dry, patchy lawn (picked as the driest grass set; blended with dirt by a procedural mask) | Charlotte Baglioni | https://polyhaven.com/a/grass_ground | CC0 |
 | Dirt Floor (`dirt_floor`) | Bare patches in the lawn | eye-candy.xyz | https://polyhaven.com/a/dirt_floor | CC0 |
 | Sand 03 (`sand_03`) | Beach sand (the listed alternate; re-tinted pale) | Charlotte Baglioni | https://polyhaven.com/a/sand_03 | CC0 |
-| Coast Sand 04 (`coast_sand_04`) | Downloaded as the first choice but **not used**: too dark and debris-filled for Venice sand | Rob Tuytel, Dario Barresi | https://polyhaven.com/a/coast_sand_04 | CC0 |
 
-The scene loads these files from `textures/` and doesn't call the Poly Haven API at runtime.
+The scene loads these files from `textures/` and doesn't call the Poly Haven API at runtime. (Coast Sand 04 was
+downloaded as a first choice for the beach, but it was too dark for Venice sand and has been removed.)
 Thanks to Poly Haven for the API.
 
 ## Characters, animation and dogs (CC0 1.0)

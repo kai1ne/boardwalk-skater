@@ -284,13 +284,15 @@ function loadTex(path, { srgb = false, fallback }) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+// photo textures ship at 1K (downscaled from Poly Haven's 2K): ≈11 MB, and indistinguishable from the chase camera
+const TEX_RES = '1k';
 function pbr(id, { ao = true, rough = true, col = '#888888' } = {}) {
-  const p = `textures/${id}/${id}_`;
+  const p = `textures/${id}/${id}_`, r = `_${TEX_RES}.jpg`;
   return {
-    diff: loadTex(p + 'diff_2k.jpg', { srgb: true, fallback: () => solidCanvas(col, 60) }),
-    nor: loadTex(p + 'nor_gl_2k.jpg', { fallback: () => solidCanvas('#8080ff') }),
-    rough: rough ? loadTex(p + 'rough_2k.jpg', { fallback: () => solidCanvas('#d8d8d8') }) : null,
-    ao: ao ? loadTex(p + 'ao_2k.jpg', { fallback: () => solidCanvas('#ffffff') }) : null,
+    diff: loadTex(p + 'diff' + r, { srgb: true, fallback: () => solidCanvas(col, 60) }),
+    nor: loadTex(p + 'nor_gl' + r, { fallback: () => solidCanvas('#8080ff') }),
+    rough: rough ? loadTex(p + 'rough' + r, { fallback: () => solidCanvas('#d8d8d8') }) : null,
+    ao: ao ? loadTex(p + 'ao' + r, { fallback: () => solidCanvas('#ffffff') }) : null,
   };
 }
 const TX = {
