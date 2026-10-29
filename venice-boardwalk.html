@@ -17,7 +17,14 @@
   #ghud.show { opacity: 1; }
   #ghud .tl { position: absolute; left: 18px; top: 14px; }
   #ghud .tr { position: absolute; right: 18px; top: 14px; text-align: right; }
-  #gScore { font-size: 34px; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  #gScoreLbl { font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: .85; margin-bottom: -2px; }
+  #gScore { font-size: 34px; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; transform-origin: left center; }
+  #gScore.flash { animation: scorePop .45s ease-out; }
+  @keyframes scorePop { 0% { transform: scale(1); color: #fff; } 25% { transform: scale(1.22); color: #ffd84a; } 100% { transform: scale(1); color: #fff; } }
+  .scoreRow { display: flex; align-items: baseline; gap: 10px; }
+  #gAdd { font-size: 20px; font-weight: 800; color: #ffd84a; opacity: 0; font-variant-numeric: tabular-nums; }
+  #gAdd.flash { animation: addTag 1.3s ease-out forwards; }
+  @keyframes addTag { 0% { opacity: 0; transform: translateY(6px) scale(.8); } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 25% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
   #gCombo { font-size: 15px; font-weight: 700; color: #ffd84a; min-height: 18px; }
   .meter { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
   .meter .lbl { font-size: 11px; font-weight: 800; letter-spacing: 1px; opacity: .9; }
@@ -63,7 +70,7 @@
 <body>
 <div id="loading">Building the boardwalk…</div>
 <div id="hud"></div>
-<div id="ghud"><div class="tl"><div id="gScore">0</div><div id="gCombo"></div></div>
+<div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div></div>
 <div id="gTitle" class="screen"><div class="card"><h1>BOARDWALK SKATER</h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>

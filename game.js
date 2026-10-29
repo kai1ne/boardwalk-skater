@@ -23,7 +23,7 @@ export function createGame(ctx) {
   const L = G.lanes, J = G.jump, H = G.hazards, SP = G.spawn, SC = G.score, TR = G.tricks, EN = G.energy, HP = G.health;
   const LANE_X = Array.from({ length: L.count }, (_, i) => (i - (L.count - 1) / 2) * L.width);
   const $ = (id) => document.getElementById(id);
-  const ui = { hud: $('ghud'), score: $('gScore'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
+  const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
     title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), titleBest: $('gTitleBest'), newBest: $('gNewBest') };
 
@@ -223,6 +223,13 @@ export function createGame(ctx) {
     return Math.min(G.speed.max, G.speed.start + G.speed.ramp * st.rampT);   // rampT: clean riding time (damage takes some back)
   }
   function popup(text, cls = '') { const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 1300); }
+  // bonus points: a "+points" tag pops up beside the score counter while the counter counts up to include them
+  let shown = 0, addSum = 0, addTimer = 0;
+  function addBonus(pts) {
+    st.score += pts; if (st.mode !== 'playing') return;
+    addSum += pts; ui.add.textContent = `+${addSum.toLocaleString()}`; flash(ui.add); flash(ui.score);
+    clearTimeout(addTimer); addTimer = setTimeout(() => { addSum = 0; }, 1300);   // quick back-to-back bonuses add up in one tag
+  }
   function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   function breakCombo() { if (st.combo > 1 && st.mode === 'playing') popup('combo lost', 'bad'); st.combo = 0; st.comboT = 0; }
   function damage(n, label) {
@@ -234,7 +241,7 @@ export function createGame(ctx) {
     clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0 });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 });
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay;
-    ui.pops.textContent = ''; showScreens();
+    ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
   }
   function gameOver() {
     st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null;
@@ -303,7 +310,7 @@ export function createGame(ctx) {
     for (const t of sk.tricks) { pts += TR[t].pts; names.push(TRICK_NAME[t]); }
     if (sk.stance !== sk.popStance) { pts += SC.switchBonus; names.push('SWITCH'); }   // changed feet in the air
     if (over) pts *= SC.overObstacle;
-    const mult = Math.min(SC.comboMax, 1 + st.combo); pts *= mult; st.score += pts; st.combo++;
+    const mult = Math.min(SC.comboMax, 1 + st.combo); pts *= mult; addBonus(pts); st.combo++;
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');
     popup(`${label}${over ? ' OVER' : ''} +${pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
   }
@@ -381,7 +388,7 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   const SKB = G.skaterBox;
   function nearMiss(o) {
-    st.nearMisses++; const mult = Math.min(SC.comboMax, 1 + st.combo), pts = SC.nearMiss * mult; st.score += pts; st.combo++;
+    st.nearMisses++; const mult = Math.min(SC.comboMax, 1 + st.combo), pts = SC.nearMiss * mult; addBonus(pts); st.combo++;
     popup(`CLOSE CALL +${pts}${mult > 1 ? `  ×${mult}` : ''}`, 'near');
   }
   function collide() {
@@ -400,7 +407,7 @@ export function createGame(ctx) {
       }
       if (!o.done && !ahead) {   // fully behind the skater
         o.done = true; if (st.mode !== 'playing') continue;
-        if (o.cleared) { st.score += SC.clear; popup(`CLEAR +${SC.clear}`); }
+        if (o.cleared) { addBonus(SC.clear); popup(`CLEAR +${SC.clear}`); }
         if (o.minGap < SC.nearDist || (o.cleared && o.minV < SC.nearJump)) nearMiss(o);
       }
     }
@@ -542,7 +549,9 @@ export function createGame(ctx) {
 
     hudT -= dt;
     if (hudT <= 0) { hudT = 0.05;
-      ui.score.textContent = Math.floor(st.score).toLocaleString();
+      // the counter eases toward the score, so a bonus visibly counts up
+      const goal = st.score; shown = st.mode === 'playing' && goal >= shown ? shown + (goal - shown) * (goal - shown > 30 ? 0.25 : 1) : goal;
+      ui.score.textContent = Math.floor(shown).toLocaleString();
       const mult = Math.min(SC.comboMax, 1 + st.combo); ui.combo.textContent = st.combo > 0 ? `×${mult} combo` : '';
       const hp = st.health / HP.max; ui.health.style.width = `${hp * 100}%`; ui.health.style.background = hp > 0.6 ? '#4cd964' : hp > 0.3 ? '#ffcc33' : '#ff4a4a';
       ui.energy.style.width = `${st.energy / EN.max * 100}%`;
