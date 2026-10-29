@@ -38,7 +38,7 @@ Debug keys:
 
 ## How to play
 
-Skate as far as you can. Speed starts at 27 km/h and climbs to 58 km/h.
+Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride without damage) to 115 km/h.
 
 - **Health** (top right): every obstacle you run into costs health: 34 for anything solid (3 hits end the run) and
   10 for slipping on pizza or poop. Each obstacle can only hit you once, and there's no invincibility window, so

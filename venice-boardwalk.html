@@ -29,7 +29,8 @@
   #gDist { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
   #gPops { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: 0; display: flex; flex-direction: column; align-items: center; }
   .pop { white-space: nowrap; font-size: 22px; font-weight: 800; animation: pop 1.1s ease-out forwards; }
-  .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; }
+  .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; } .pop.near { color: #b8ff6a; font-size: 19px; }
+  #gBot { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); font: 800 13px -apple-system, Helvetica, Arial, sans-serif; letter-spacing: 2px; color: #111; background: #ffd84a; padding: 3px 10px; border-radius: 4px; pointer-events: none; }
   @keyframes pop { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px); } }
   .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .35s;
             font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
@@ -109,8 +110,9 @@ const GAME = {
            recoverTime: 0.3,               // s of counter-lean after a carve
            lean: 0.12, camRoll: 0.08 },    // body/board lean (rad) while sliding, and the share of it the camera rolls
   speed: { title: 4.5, start: 7.5,         // m/s on the title screen / at the start of a run
-           ramp: 0.09,                     // m/s gained per second of play
-           max: 16,                        // m/s cap (~58 km/h)
+           ramp: 0.22,                     // m/s gained per second of riding without damage (start → max in ~110 s)
+           hitRampKeep: 0.5, slipRampKeep: 0.8,   // share of the built-up speed kept after a hit / a slip or wipeout
+           max: 32,                        // m/s cap (~115 km/h)
            hitFactor: 0.55, slipFactor: 0.6, bailFactor: 0.7,    // speed multipliers on hit / slip / wipeout
            recoverRate: 2.2,               // m/s² back up to the ramped speed
            crashDecel: 9 },
@@ -133,17 +135,16 @@ const GAME = {
             slip: 10,                      // damage from slipping on pizza or poop (not if you jump within the coyote window)
             fall: 20,                      // damage from a wipeout
             regenDelay: 8, regen: 1.5 },   // after 8 s without damage, health refills at 1.5 per second (a 34 hit back in ~23 s)
-  hazards: { shake: 0.3, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit
+  hazards: { shake: 0.3, hitStop: 0.07, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit; hitStop = s the action freezes
   skaterBox: { w: 0.5, d: 0.9, h: 1.75 },  // collision box (m)
-  obstacles: {                             // AABB sizes (m); clear = board height needed to pass over (null = can't be jumped)
+  obstacles: {                             // hitbox sizes (m); clear = board height needed to pass over (null = can't be jumped)
     ped:        { kind: 'solid', w: 0.6, h: 1.8, d: 0.5, clear: null },
-    pedDog:     { kind: 'solid', w: 0.7, h: 1.8, d: 2.3, clear: null },   // owner plus the dog walking ahead on its lead
     bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null },   // cyclist riding along a lane
     skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null },   // skater cruising along a lane
-    selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer standing still, phone up
-    beg:        { kind: 'solid', w: 1.0, h: 1.0, d: 1.1, clear: null },   // sitting on the ground asking for change (outer lanes only)
-    smoke:      { kind: 'solid', w: 1.0, h: 1.0, d: 1.1, clear: null },   // sitting on the ground, smoking (outer lanes only)
-    drums:      { kind: 'solid', w: 2.3, h: 1.0, d: 2.3, clear: null },   // three drummers in a circle filling the lane (outer lanes only)
+    selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer, phone up
+    performer:  { kind: 'solid', w: 2.0, h: 1.8, d: 4.0, clear: null },   // busker + small crowd on a rug, outer lanes only
+    dog:        { kind: 'solid', w: 0.7, h: 0.62, d: 0.7, clear: 0.35 },  // the dog end of a leash pair: a short-to-medium ollie clears it
+    leashCord:  { kind: 'solid', w: 1.0, h: 1.0, d: 0.25, clear: 0.45 },  // the lead between owner and dog (w is set from the gap); jumpable. The owner can't be jumped
     can:        { kind: 'solid', w: 1.0, h: 0.66, d: 0.7, clear: 0.5 },
     cones:      { kind: 'solid', w: 1.35, h: 0.72, d: 0.9, clear: 0.55 },
     pizza:      { kind: 'slip', w: 0.9, h: 0.05, d: 1.0, clear: 0.12 },
@@ -151,28 +152,48 @@ const GAME = {
     crossBike:  { kind: 'solid', w: 1.8, h: 1.8, d: 0.7, clear: null },   // w is along x: they ride across the lanes
     crossSkate: { kind: 'solid', w: 1.0, h: 1.8, d: 0.7, clear: null },
   },
-  spawn: { ahead: 70,                      // m ahead of the skater that rows are spawned
+  spawn: { ahead: 70, aheadTime: 3.5,     // rows are spawned at least 70 m and at least 3.5 s ahead of the skater
            despawn: 8,                     // m behind the skater that they are recycled
            startDelay: 45,                 // m of open boardwalk before the first row
            minGap: 13,                     // m minimum between rows
-           reaction: 0.55,                 // s; gap ≥ speed × (reaction + 3 carves + recovery)
-           gapJitter: { start: [1.0, 1.45], end: [1.0, 1.05] },   // random multiplier on that gap, at the start → at full difficulty
-           rowJitter: 1.2,                 // m of z scatter inside a row
-           rampDist: 1500,                 // m (~4,900 ft) over which obstacles steadily ramp up to full difficulty
-           twoLane: [0.2, 0.75], threeLane: [0.0, 0.45],  // chance of a 2nd / 3rd blocked lane, start → full difficulty
-           maxPeoplePerRow: 3,             // people (any kind) per row; extra picks become cans or cones
+           reaction: 0.55,                 // s; gap ≥ speed × (reaction + 3 carves + recovery), then × the stage's gap range
            towardChance: 0.5,              // share of walkers/riders coming toward you (the rest go your way, slower than you)
-           bikeSpeed: [4.0, 6.0], skaterSpeed: [2.8, 3.8],   // m/s of riders moving along the lanes
-           // 70% people (first eight) / 30% objects (last four)
-           weights: { ped: 0.22, pedDog: 0.1, bike: 0.1, skater: 0.09, selfie: 0.08, beg: 0.04, smoke: 0.04, drums: 0.03, can: 0.09, cones: 0.08, pizza: 0.065, poop: 0.065 },
-           crossFirst: [10, 18], crossEvery: [14, 30],   // s until the first crossing cyclist/skater, then between them
-           crossSkateChance: 0.4, crossBikeSpeed: [3.6, 5.0], crossSkateSpeed: [2.6, 3.4],   // m/s across the boardwalk
+           bikeSpeed: [4.0, 6.0], skaterSpeed: [2.4, 4.2],   // m/s of riders moving along the lanes (× the stage's moverScale)
+           skaterChangeTime: 1.0, skaterTelegraph: 0.5,      // s for another skater's lane change, and the lean before it
+           selfieWalkSpeed: 0.7,           // m/s an influencer backs up at
+           flashDist: 5,                   // m: an influencer's flash fires when you pass this close
+           crossSkateChance: 0.4, crossBikeSpeed: [3.6, 5.0], crossSkateSpeed: [2.6, 3.4],   // crossing traffic, m/s across the boardwalk
            crossEdge: 8.6 },               // |x| where crossing traffic appears / leaves
+  // ---- spawn director: patterns by difficulty stage (director.js). A stage starts at `from` metres of the run.
+  //   types: obstacles allowed · patterns: relative weights · gap: slack on top of the minimum row gap ·
+  //   moverScale: speed of riders · pedStop / pedDrift: share of walkers who stop or drift a lane ·
+  //   skaterChange: share of skaters who change lane · selfieWalk: share of influencers walking backward · leashPlus: chance of an extra blocker with a leash
+  director: {
+    peopleShare: 0.7,                      // blockers are people this often (the rest cans, cones, pizza, poop)
+    jumpMargin: 0.1, jumpSlack: 0.3,       // validator: a jump must clear by this much height (m) and distance (m) at the current speed
+    hazardLineGap: [6, 9],                 // m from a hazard line to the jumpable in its gap
+    stages: [
+      { from: 0,    types: ['ped', 'cones', 'can'], patterns: { single: 0.8, pair: 0.2 }, gap: [1.5, 1.9], moverScale: 0.8,
+        pedStop: 0, pedDrift: 0, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
+      { from: 250,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike'], patterns: { single: 0.5, pair: 0.32, hazardLine: 0.18 }, gap: [1.3, 1.6], moverScale: 0.9,
+        pedStop: 0.2, pedDrift: 0.1, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
+      { from: 600,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie'], patterns: { single: 0.32, pair: 0.3, triple: 0.06, hazardLine: 0.14, performerSide: 0.18 },
+        gap: [1.15, 1.4], moverScale: 1.0, pedStop: 0.25, pedDrift: 0.15, skaterChange: 0.3, selfieWalk: 0.3, leashPlus: 0 },
+      { from: 1000, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'leash', 'cross'],
+        patterns: { single: 0.2, pair: 0.27, triple: 0.12, hazardLine: 0.1, performerSide: 0.12, leash: 0.14, cross: 0.05 }, gap: [1.05, 1.25], moverScale: 1.15,
+        pedStop: 0.25, pedDrift: 0.2, skaterChange: 0.4, selfieWalk: 0.4, leashPlus: 0.3 },
+      { from: 1600, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'leash', 'cross'],
+        patterns: { single: 0.12, pair: 0.3, triple: 0.2, hazardLine: 0.1, performerSide: 0.1, leash: 0.13, cross: 0.05 }, gap: [1.0, 1.1], moverScale: 1.3,
+        pedStop: 0.3, pedDrift: 0.25, skaterChange: 0.5, selfieWalk: 0.4, leashPlus: 0.5 },
+    ],
+  },
   crowd: { sideWalkers: 0.015 },           // share of the off-lane crowd kept (walkers, cyclists, sitters, performers): 0.015 ≈ as many people per side
                                            // strip as per lane; 1 = the full phase-1 crowd
   score: { perMetre: 1, ollieMin: 25, ollieMax: 100,   // ollie points scale with jump height
            overObstacle: 2,                // multiplier for a jump that cleared an obstacle
-           clear: 75, comboMax: 8, comboWindow: 3.0,
+           clear: 75, comboMax: 8,         // the combo chains landed jumps and close calls; it resets on a hit or a wipeout
+           nearMiss: 60, nearDist: 0.45,   // close call: passing within 0.45 m of an obstacle's hitbox without touching it
+           nearJump: 0.15,                 // …or clearing a jumpable with less than 0.15 m to spare
            switchBonus: 50 },              // landing after swapping feet in the air (↑/↓)
   overDelay: 0.9,                          // s before the game-over screen appears
 };
@@ -1727,7 +1748,7 @@ const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
   if (game && game.keydown(e)) { e.preventDefault(); return; }
   if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
-  else if (e.key === 'p' || e.key === 'P') cyclePaused = !cyclePaused;
+  else if (e.key === 'l' || e.key === 'L') cyclePaused = !cyclePaused;   // P is the autopilot now
   else if (e.key === 'o' || e.key === 'O') { if (gtaoPass) gtaoPass.enabled = !gtaoPass.enabled; }
   else if (e.key === 'c' || e.key === 'C') { camMode = camMode === 'chase' ? 'ref' : 'chase'; if (camMode === 'ref') Object.assign(REF_POSE, { x: S.x, y: 1.7, z: S.z, yaw: 0, pitch: 2 }); }
 });
@@ -1754,13 +1775,14 @@ function updateHud(dt) {
   fpsAcc += dt; fpsN++; hudT -= dt;
   if (fpsAcc >= 1) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (hudT <= 0) { hudT = 0.25; const cs = chars ? chars.stats : null;
-    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · P hold phase · H hitboxes · O AO · C camera</span>`; }
+    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · L hold phase · P autopilot · H hitboxes · O AO · C camera</span>`; }
 }
 
 // Debug / screenshot hooks (used for the reference comparisons)
 window.__vb = {
   showSkater: false,   // keep the skater visible in the fixed 'ref' camera (close-up checks)
   timeScale: 1,        // slow motion for animation checks
+  noRender: false,     // skip rendering (fast headless simulation, e.g. autopilot tests)
   setPhase(i, hold = true) { cycleT = i * PHASE_LEN; cyclePaused = hold; },
   ref(pose) { camMode = 'ref'; Object.assign(REF_POSE, pose); S.z = pose.z - 4; },
   chase() { camMode = 'chase'; },
@@ -1793,7 +1815,8 @@ Object.defineProperty(clock, 'elapsedTime', { get() { return clock.getElapsed();
 let started = false;
 function frame(ts) {
   requestAnimationFrame(frame); clock.update(ts);
-  const rawDt = clock.getDelta(); updateResolution(rawDt); step(Math.min(rawDt, 0.05) * __vb.timeScale, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
+  const rawDt = clock.getDelta(); updateResolution(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
+  step(Math.min(rawDt, 0.05) * __vb.timeScale * stop, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
 }
 function step(dt, t) {
   if (game && game.paused) dt = 0;   // paused (Esc or hidden tab): the world holds still, rendering continues
@@ -1809,7 +1832,7 @@ function step(dt, t) {
   ocean.position.z = camera.position.z;
   if (chars) chars.update(dt, t, phaseState); else updatePeople(dt, t);
   updateBirds(t, dt); updateFliers(dt, t); updateShadowCam(); updatePost(t);
-  renderer.info.reset(); composer.render(dt);
+  if (!__vb.noRender) { renderer.info.reset(); composer.render(dt); }   // noRender: headless simulation for bot tests
   updateHud(dt);
 }
 let chars = null, game = null;

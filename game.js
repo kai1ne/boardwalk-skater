@@ -9,6 +9,7 @@
 // =====================================================================================
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createDirector } from './director.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -27,7 +28,7 @@ export function createGame(ctx) {
     title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), titleBest: $('gTitleBest'), newBest: $('gNewBest') };
 
   let best = 0; try { best = Number(localStorage.getItem('vbSkaterBest')) || 0; } catch (e) { /* storage blocked: best score lasts this session only */ }
-  const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, nextCross: 0 };
+  const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
     mode: 'ground', t: 0, y: 0, vy: 0, airT: 0, airDur: 1, jumpF: 0, chargeT: 0, jumpHeld: false, flipOnPop: false,
@@ -52,6 +53,11 @@ export function createGame(ctx) {
     grease: smearMat(0xb86a22, 0.32), poop: new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.32 }), poopSmear: smearMat(0x3a2412, 0.4),
     litter: [0xf4f1e6, 0xe8322b, 0xffd93b, 0x2a7de1].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, side: THREE.DoubleSide })),
     ped: new THREE.MeshStandardMaterial({ color: 0x8090a0, roughness: 0.8 }),
+    hat: new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.9, side: THREE.DoubleSide }),
+    rug: new THREE.MeshStandardMaterial({ roughness: 0.95, map: (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d');
+      x.fillStyle = '#7a1f2b'; x.fillRect(0, 0, 128, 256); x.strokeStyle = '#e7c46a'; x.lineWidth = 6; x.strokeRect(8, 8, 112, 240); x.strokeStyle = '#1f3d6b'; x.lineWidth = 4; x.strokeRect(18, 18, 92, 220);
+      x.fillStyle = '#e7c46a'; for (let i = 0; i < 6; i++) { x.save(); x.translate(64, 40 + i * 36); x.rotate(Math.PI / 4); x.fillRect(-9, -9, 18, 18); x.restore(); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })() }),
   };
   const sliceGeo = (() => { const s = new THREE.Shape(); s.moveTo(0, 0.17); s.lineTo(-0.13, -0.15); s.quadraticCurveTo(0, -0.19, 0.13, -0.15); s.lineTo(0, 0.17);
     return new THREE.ExtrudeGeometry(s, { depth: 0.014, bevelEnabled: false }).rotateX(-Math.PI / 2); })();
@@ -81,54 +87,80 @@ export function createGame(ctx) {
         const b = new THREE.Mesh(lumpy(r, r * 40), M.poop); b.scale.y = 0.75; b.position.set(x, y, z); g.add(b); }
       g.scale.setScalar(1.45); return g; },
     ped() { const g = new THREE.Group(), m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.7, 10).translate(0, 0.85, 0), M.ped); g.add(m); return g; },   // only if the rigged crowd failed to load
+    rug() {   // a busker's patterned rug marking the performance footprint, with a tip hat
+      const g = new THREE.Group(), T = G.obstacles.performer, r = new THREE.Mesh(new THREE.PlaneGeometry(T.w - 0.1, T.d - 0.1).rotateX(-Math.PI / 2), M.rug); r.position.y = 0.006; r.receiveShadow = true; g.add(r);
+      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.08, 14, 1, true).translate(0, 0.04, 0), M.hat); hat.position.set(0.55, 0.006, T.d / 2 - 0.5); g.add(hat); return g; },
   };
   const pools = {};
   function getMesh(type) { const p = pools[type] || (pools[type] = []); const g = p.pop() || BUILD[type](); g.traverse((m) => { if (m.isMesh) { m.castShadow = !m.material.transparent; m.receiveShadow = true; } }); scene.add(g); return g; }
   function freeMesh(type, g) { scene.remove(g); pools[type].push(g); }
 
   // -------------------------------------------------------------------------------------
-  // Obstacle rows: every row leaves at least one lane completely open; gaps scale with speed
-  // so a reaction plus a full lane-to-lane traverse always fits.
+  // Obstacles. Each has one or more hitbox parts { dx, dz, w, d, h, clear, kind } relative to (o.x, o.z),
+  // a behaviour (walk / stop / drift / ride / change lane / walk backward / stand), and the agents or
+  // meshes that show it. Placement comes from the spawn director (director.js).
   // -------------------------------------------------------------------------------------
   const OBS = [];
   let nextRowZ = 0, agentSeed = 1;
-  const PEOPLE = new Set(['ped', 'pedDog', 'bike', 'skater', 'selfie', 'beg', 'smoke', 'drums']), MOVERS = new Set(['ped', 'pedDog', 'bike', 'skater']), SITTERS = new Set(['beg', 'smoke', 'drums']);
-  const laneLoad = LANE_X.map(() => 0);   // people placed per lane, so rows spread them evenly
-  function spawnObstacle(type, lane, z) {
-    const T = G.obstacles[type], o = { type, lane, x: LANE_X[lane], z, az: z, zOff: 0, vz: 0, ...T, done: false, cleared: false, mesh: null, meshType: type, ped: null };
-    const seed = 7919 * agentSeed++;
-    if (MOVERS.has(type)) {
-      let dir = Math.random() < SP.towardChance ? 1 : -1;   // +1 comes toward the skater, -1 goes the same way
-      const sp = type === 'bike' ? rand(...SP.bikeSpeed) : type === 'skater' ? rand(...SP.skaterSpeed) : 0;
-      if (dir < 0 && sp > sk.speed * 0.7) dir = 1;           // never a same-way rider the player couldn't catch up with
-      if (chars) { o.ped = type === 'bike' ? chars.addGameCyclist({ x: o.x, z, dirZ: dir, seed }) : type === 'skater' ? chars.addGameSkater({ x: o.x, z, dirZ: dir, seed })
-          : chars.addGameWalker({ x: o.x, z, dir, seed, dog: type === 'pedDog' });
-        if (sp) o.ped.speed = sp; }
-      o.vz = dir * (o.ped ? o.ped.speed : sp || 1.2);
-      if (type === 'pedDog') o.zOff = dir * 0.6;              // the box covers the owner and the dog out in front
-      // place them so they reach the row's z when the skater does
-      o.az = z - o.vz * (S.z - z) / Math.max(sk.speed, 1); o.z = o.az + o.zOff;
-      if (o.ped) o.ped.z = o.az; else { o.mesh = getMesh('ped'); o.meshType = 'ped'; }
-    } else if (type === 'selfie' || SITTERS.has(type)) {
-      if (!chars) { o.mesh = getMesh('ped'); o.meshType = 'ped'; }
-      else if (type === 'drums') {   // three drummers sitting on the ground in a little circle that fills the lane
-        o.peds = []; const a0 = rand(0, 6.28);
-        for (let k = 0; k < 3; k++) { const ang = a0 + k * Math.PI * 2 / 3, x = o.x + Math.sin(ang) * 0.88, zz = z + Math.cos(ang) * 0.88;
-          o.peds.push(chars.addGameStation({ kind: 'drum', x, z: zz, ry: Math.atan2(o.x - x, z - zz), seed: seed + k })); } }
-      else { const inward = o.x < 0 ? Math.PI / 2 : -Math.PI / 2;   // sitters face the middle of the boardwalk
-        o.ped = chars.addGameStation({ kind: type, x: o.x, z, ry: type === 'selfie' ? (Math.random() < 0.5 ? 0 : Math.PI) + rand(-0.5, 0.5) : inward + rand(-0.3, 0.3), seed, sex: type === 'selfie' ? 'F' : undefined }); }
-    } else { o.mesh = getMesh(type); o.mesh.rotation.y = (Math.random() - 0.5) * 0.5; }
-    if (o.mesh) o.mesh.position.set(o.x, 0, o.az);
+  const director = createDirector(G, LANE_X);
+  const timeTo = (z) => (S.z - z) / Math.max(sk.speed, 1);   // s until the skater reaches z at the current speed
+  const part = (T, dx = 0, dz = 0, w = T.w) => ({ dx, dz, w, d: T.d, h: T.h, clear: T.clear, kind: T.kind });
+  const placeholder = (o) => { o.mesh = getMesh('ped'); o.meshType = 'ped'; };
+  function spawnObstacle(type, lane, z, opt = {}) {
+    const T = G.obstacles[type], seed = 7919 * agentSeed++;
+    const o = { type, lane, x: LANE_X[lane], z, vz: 0, t: 0, parts: T ? [part(T)] : [], done: false, cleared: false, hit: false, minGap: 9, minV: 9, mesh: null, meshType: type, ped: null, peds: null, lanes: [lane] };
+    const sc = opt.moverScale || 1, e = timeTo(z);
+    // movers are placed so that they reach the row line exactly when the skater does
+    const meet = (moveT) => { o.z = z - o.vz * moveT; };
+    switch (type) {
+      case 'ped': {
+        const dir = Math.random() < SP.towardChance ? 1 : -1;
+        if (chars) o.ped = chars.addGameWalker({ x: o.x, z, dir, seed }); else placeholder(o);
+        o.vz = dir * (o.ped ? o.ped.speed : 1.2); o.walkTs = o.ped ? o.ped.ts : 1;
+        if (opt.behave === 'stop' && e > 3) { o.idle = rand(1.5, Math.min(3, e * 0.5)); o.tStop = rand(0.15, 0.4) * e; }
+        if (opt.behave === 'drift') { o.drift = { to: opt.drift, t0: e * rand(0.15, 0.3), dur: Math.min(3.2, e * 0.45) }; o.lanes.push(opt.drift); }
+        meet(e - (o.idle || 0)); break; }
+      case 'bike': case 'skater': {
+        let dir = Math.random() < SP.towardChance ? 1 : -1;
+        const sp = rand(...(type === 'bike' ? SP.bikeSpeed : SP.skaterSpeed)) * sc;
+        if (dir < 0 && sp > sk.speed * 0.7) dir = 1;   // never a same-way rider the player couldn't catch up with
+        if (chars) { o.ped = (type === 'bike' ? chars.addGameCyclist : chars.addGameSkater)({ x: o.x, z, dirZ: dir, seed }); o.ped.speed = sp; } else placeholder(o);
+        o.vz = dir * sp;
+        if (type === 'skater' && opt.change !== undefined) { o.change = { to: opt.change, t0: e * rand(0.3, 0.5), dur: SP.skaterChangeTime }; o.lanes.push(opt.change); }
+        meet(e); break; }
+      case 'selfie': {   // influencer, phone up: standing, or walking slowly backward
+        const face = Math.random() < 0.5 ? 0 : Math.PI;
+        if (chars) o.ped = chars.addGameStation({ kind: 'selfie', x: o.x, z, ry: face + (opt.walkBack ? 0 : rand(-0.5, 0.5)), seed, sex: 'F' }); else placeholder(o);
+        if (opt.walkBack) { o.vz = -Math.cos(face) * SP.selfieWalkSpeed; if (o.ped) chars.setClip(o.ped, 'walk', -SP.selfieWalkSpeed / 0.95); }
+        meet(e); break; }
+      case 'leash': {   // owner in this lane, dog in the next, the lead stretched between them
+        const dir = Math.random() < SP.towardChance ? 1 : -1, side = (opt.dogLane - lane) * L.width, sg = Math.sign(side);
+        if (chars) { o.ped = chars.addGameWalker({ x: o.x, z, dir, seed, dog: true }); o.ped.dogSide = side; o.ped.ts *= 0.9; o.ped.speed *= 0.9; } else placeholder(o);
+        o.vz = dir * (o.ped ? o.ped.speed : 1.1); const dz = dir * 0.35, Od = G.obstacles.dog, Oc = G.obstacles.leashCord;
+        o.parts = [part(G.obstacles.ped), part(Od, side, dz), part(Oc, sg * (0.3 + (Math.abs(side) - 0.3 - Od.w / 2) / 2), dz / 2, Math.abs(side) - 0.3 - Od.w / 2)];
+        o.lanes.push(opt.dogLane); meet(e); break; }
+      case 'performer': {   // busker on a rug in an outer lane, facing the oncoming skater, with a few people watching
+        const act = ['guitar', 'drum', 'piano'][Math.floor(Math.random() * 3)], back = z - G.obstacles.performer.d / 2 + 0.6;
+        o.mesh = getMesh('rug'); o.meshType = 'rug'; o.mesh.rotation.y = 0;
+        if (chars) { o.peds = [chars.addGameStation({ kind: act, x: o.x, z: back, ry: 0, seed })];
+          const n = 2 + Math.floor(Math.random() * 2);
+          for (let k = 0; k < n; k++) { const wx = o.x + (k - (n - 1) / 2) * 0.6 + rand(-0.1, 0.1), wz = back + rand(1.9, 2.8);
+            o.peds.push(chars.addGameStation({ kind: 'watch', x: wx, z: wz, ry: Math.atan2(o.x - wx, back - wz), seed: seed + k + 1 })); } }
+        break; }
+      default: o.mesh = getMesh(type); o.mesh.rotation.y = (Math.random() - 0.5) * 0.5;
+    }
+    if (o.ped && type !== 'leash') o.ped.z = o.z; if (o.ped && type === 'leash') o.ped.z = o.z;
+    if (o.mesh) o.mesh.position.set(o.x, 0, o.z);
     OBS.push(o); return o;
   }
   // a cyclist or skater crossing the boardwalk at a steady speed, timed to be over the lanes when the skater gets there
-  function spawnCrossing(z) {
+  function spawnCrossing(z, xArr = rand(LANE_X[0], LANE_X[L.count - 1])) {
     const type = Math.random() < SP.crossSkateChance ? 'crossSkate' : 'crossBike', T = G.obstacles[type];
     const dirX = Math.random() < 0.5 ? 1 : -1, vx = rand(...(type === 'crossBike' ? SP.crossBikeSpeed : SP.crossSkateSpeed));
-    const o = { type, lane: -1, x: 1e3, z, ...T, done: false, cleared: false, mesh: null, ped: null, dirX, vx, xArr: rand(LANE_X[0], LANE_X[L.count - 1]), tArr: clock + (S.z - z) / Math.max(sk.speed, 1), active: false, exited: false };
+    const o = { type, lane: -1, x: 1e3, z, vz: 0, t: 0, parts: [part(T)], done: false, cleared: false, hit: false, minGap: 9, minV: 9, mesh: null, meshType: 'ped', ped: null, dirX, vx, xArr, tArr: clock + timeTo(z), active: false, exited: false };
     OBS.push(o); return o;
   }
-  function updateCrossing(o, dt) {
+  function updateCrossing(o) {
     o.x = o.xArr + o.dirX * o.vx * (clock - o.tArr);
     const inside = Math.abs(o.x) <= SP.crossEdge;
     if (inside && !o.active && !o.exited) { o.active = true;
@@ -137,32 +169,50 @@ export function createGame(ctx) {
     if (o.active && !inside && Math.sign(o.x) === o.dirX) { o.active = false; o.exited = true; o.done = true; if (o.ped) { chars.removeGameAgent(o.ped); o.ped = null; } if (o.mesh) { freeMesh('ped', o.mesh); o.mesh = null; } }
     if (o.ped) { o.ped.x = o.x; o.ped.z = o.z; } if (o.mesh) o.mesh.position.set(o.x, 0, o.z);
   }
+  // per-frame behaviour of the moving obstacles
+  function updateObstacle(o, dt) {
+    o.t += dt;
+    let vz = o.vz;
+    if (o.idle) {   // a pedestrian who stops for a moment, then walks on
+      const stopped = o.t > o.tStop && o.t < o.tStop + o.idle;
+      if (stopped !== !!o.halted) { o.halted = stopped; if (o.ped) { o.ped.halt = stopped; chars.setClip(o.ped, stopped ? 'idle' : 'walk', stopped ? 1 : o.walkTs); } }
+      if (stopped) vz = 0;
+    }
+    o.z += vz * dt;
+    if (o.drift && o.t > o.drift.t0) o.x = lerp(LANE_X[o.lane], LANE_X[o.drift.to], smooth(0, 1, (o.t - o.drift.t0) / o.drift.dur));
+    if (o.change) {   // other skater: lean for the telegraph time, then carve into the next lane
+      const c = o.change, side = Math.sign(c.to - o.lane), tel = SP.skaterTelegraph;
+      const lean = smooth(c.t0 - tel, c.t0, o.t) * (1 - smooth(c.t0 + c.dur * 0.6, c.t0 + c.dur, o.t));
+      if (o.ped) o.ped.lean = -side * 0.28 * lean;
+      if (o.t > c.t0) o.x = lerp(LANE_X[o.lane], LANE_X[c.to], smooth(0, 1, (o.t - c.t0) / c.dur));
+    }
+    if (o.ped) { o.ped.x = o.x; o.ped.z = o.z; } if (o.mesh && o.type === 'ped') o.mesh.position.set(o.x, 0, o.z);
+    // an influencer's flash fires as you pass close
+    const dz = S.z - o.z;
+    if (o.type === 'selfie' && !o.flashed && o.ped && Math.abs(dz) < SP.flashDist && Math.abs(o.x - sk.x) < 2.6) { o.flashed = true; chars.cue(o.ped, 'flash'); }
+  }
   function removeObstacle(i) { const o = OBS[i]; if (o.ped) chars.removeGameAgent(o.ped); if (o.peds) for (const p of o.peds) chars.removeGameAgent(p); if (o.mesh) freeMesh(o.meshType || 'ped', o.mesh); OBS.splice(i, 1); }
   function clearObstacles() { for (let i = OBS.length - 1; i >= 0; i--) removeObstacle(i); }
-  function rowGap() {
-    const v = Math.max(sk.speed, targetSpeed());
-    // never below the reach-the-open-lane minimum; the random slack on top shrinks as the run goes on
-    const d = difficulty(), j = SP.gapJitter;
-    return Math.max(SP.minGap, v * (SP.reaction + (L.count - 1) * carveTime(v) + L.recoverTime)) * rand(lerp(j.start[0], j.end[0], d), lerp(j.start[1], j.end[1], d));
-  }
-  // 0 → 1 over spawn.rampDist metres of the run: more lanes blocked per row and rows packed closer
-  const difficulty = () => clamp(st.dist / SP.rampDist, 0, 1);
   // a lane change is a carve whose sideways speed is a fixed share of the forward speed
   const carveTime = (v) => clamp(L.width / (Math.max(v, 0.1) * L.carveRatio), L.carveMin, L.carveMax);
-  function spawnRow(z) {
-    if (st.playT >= st.nextCross) { st.nextCross = st.playT + rand(...SP.crossEvery); spawnCrossing(z); return; }
-    const diff = difficulty();
-    let k = 1; if (Math.random() < lerp(SP.twoLane[0], SP.twoLane[1], diff)) k++; if (Math.random() < lerp(SP.threeLane[0], SP.threeLane[1], diff)) k++;
-    k = Math.min(k, L.count - 1);   // never block every lane
-    // lanes that have had the fewest people so far are picked first (with some shuffle), so people spread evenly
-    const lanes = LANE_X.map((_, i) => i).sort((a, b) => laneLoad[a] - laneLoad[b] + (Math.random() - 0.5) * 2.5).slice(0, k);
-    let people = 0;
-    for (const lane of lanes) { let type = wpick(SP.weights);
-      if (SITTERS.has(type) && lane !== 0 && lane !== L.count - 1) type = 'ped';   // people sitting on the ground only in the outer lanes
-      if (PEOPLE.has(type)) { if (people >= SP.maxPeoplePerRow) type = Math.random() < 0.5 ? 'cones' : 'can'; else { people++; laneLoad[lane]++; } }
-      spawnObstacle(type, lane, z + (Math.random() - 0.5) * SP.rowJitter); }
+  // stage by distance (st.stageLock, a debug hook, pins it for testing)
+  const stageDist = () => (st.stageLock !== undefined ? G.director.stages[st.stageLock].from : st.dist);
+  const stage = () => director.stageFor(stageDist());
+  // rows never closer than reaction + a full lane-to-lane carve + recovery at the current speed; each stage adds its own slack
+  function rowGap() {
+    const v = Math.max(sk.speed, targetSpeed()), g = G.director.stages[stage()].gap;
+    return Math.max(SP.minGap, v * (SP.reaction + (L.count - 1) * carveTime(v) + L.recoverTime)) * rand(g[0], g[1]);
   }
-  function spawnAhead() { if (st.mode !== 'playing') return; while (nextRowZ > S.z - SP.ahead) { spawnRow(nextRowZ); nextRowZ -= rowGap(); } }
+  function spawnRow(z) {
+    const plan = director.plan(stageDist(), Math.max(sk.speed, targetSpeed()));
+    for (const p of plan.placements) {
+      if (p.type === 'cross') spawnCrossing(z - p.dz, p.opt.xArr);
+      else spawnObstacle(p.type, p.lane, z - p.dz - (p.type === 'performer' ? G.obstacles.performer.d / 2 : 0), p.opt);
+      st.spawned++; if (bot.on) bot.spawned++;
+    }
+    return plan.length;
+  }
+  function spawnAhead() { if (st.mode !== 'playing') return; while (nextRowZ > S.z - Math.max(SP.ahead, sk.speed * SP.aheadTime)) { const len = spawnRow(nextRowZ); nextRowZ -= rowGap() + len; } }
 
   // -------------------------------------------------------------------------------------
   // Speed, scoring, health/energy, state changes
@@ -170,18 +220,18 @@ export function createGame(ctx) {
   function targetSpeed() {
     if (st.mode === 'title') return G.speed.title;
     if (st.mode === 'over') return 0;
-    return Math.min(G.speed.max, G.speed.start + G.speed.ramp * st.playT);
+    return Math.min(G.speed.max, G.speed.start + G.speed.ramp * st.rampT);   // rampT: clean riding time (damage takes some back)
   }
   function popup(text, cls = '') { const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 1300); }
   function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   function breakCombo() { if (st.combo > 1 && st.mode === 'playing') popup('combo lost', 'bad'); st.combo = 0; st.comboT = 0; }
   function damage(n, label) {
     if (st.mode !== 'playing') return;
-    st.health = Math.max(0, st.health - n); st.sinceHit = 0; flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
+    st.health = Math.max(0, st.health - n); st.sinceHit = 0; st.rampT *= n >= HP.hit ? G.speed.hitRampKeep : G.speed.slipRampKeep;   // damage costs built-up speed if (bot.on) bot.hits++; flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
     if (st.health <= 0) gameOver();
   }
   function startGame() {
-    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, nextCross: rand(...SP.crossFirst) });
+    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0 });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 });
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay;
     ui.pops.textContent = ''; showScreens();
@@ -239,7 +289,7 @@ export function createGame(ctx) {
   }
   function hit() {
     if (st.mode !== 'playing') return false;   // every obstacle you run into costs health (each one can only hit once)
-    sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; breakCombo(); damage(HP.hit, 'OUCH'); return true;
+    sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(HP.hit, 'OUCH'); return true;
   }
   function land() {
     sk.y = 0; sk.vy = 0;
@@ -253,7 +303,7 @@ export function createGame(ctx) {
     for (const t of sk.tricks) { pts += TR[t].pts; names.push(TRICK_NAME[t]); }
     if (sk.stance !== sk.popStance) { pts += SC.switchBonus; names.push('SWITCH'); }   // changed feet in the air
     if (over) pts *= SC.overObstacle;
-    const mult = Math.min(SC.comboMax, 1 + st.combo); pts *= mult; st.score += pts; st.combo++; st.comboT = SC.comboWindow;
+    const mult = Math.min(SC.comboMax, 1 + st.combo); pts *= mult; st.score += pts; st.combo++;
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');
     popup(`${label}${over ? ' OVER' : ''} +${pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
   }
@@ -292,12 +342,10 @@ export function createGame(ctx) {
         break;
       case 'land': if (sk.t >= J.landTime) setMode('ground'); break;
       case 'slip':
-        if (!sk.slipApplied && sk.t >= J.coyote) { sk.slipApplied = true; sk.speed = sk.slipSpeed * G.speed.slipFactor; breakCombo(); S.shake = H.shake * 0.5; damage(HP.slip, 'SLIP'); }
+        if (!sk.slipApplied && sk.t >= J.coyote) { sk.slipApplied = true; sk.speed = sk.slipSpeed * G.speed.slipFactor; S.shake = H.shake * 0.5; damage(HP.slip, 'SLIP'); }
         if (sk.t >= H.slipTime) setMode('ground'); break;
       case 'bail': if (sk.t >= H.bailTime) setMode('ground'); break;
     }
-    // combo chain expires after a while on the ground without a trick
-    if (st.combo > 0 && grounded()) { st.comboT -= dt; if (st.comboT <= 0) st.combo = 0; }
     return sk.lean;
   }
 
@@ -332,16 +380,29 @@ export function createGame(ctx) {
   // Collisions: lane-aware AABBs (not the meshes)
   // -------------------------------------------------------------------------------------
   const SKB = G.skaterBox;
+  function nearMiss(o) {
+    st.nearMisses++; const mult = Math.min(SC.comboMax, 1 + st.combo), pts = SC.nearMiss * mult; st.score += pts; st.combo++;
+    popup(`CLOSE CALL +${pts}${mult > 1 ? `  ×${mult}` : ''}`, 'near');
+  }
   function collide() {
     const sx0 = sk.x - SKB.w / 2, sx1 = sk.x + SKB.w / 2, sz0 = S.z - SKB.d / 2, sz1 = S.z + SKB.d / 2;
     for (const o of OBS) {
       if (o.done || (o.lane < 0 && !o.active)) continue;
-      const ox0 = o.x - o.w / 2, ox1 = o.x + o.w / 2, oz0 = o.z - o.d / 2, oz1 = o.z + o.d / 2;
-      if (oz0 > sz1) { o.done = true; if (o.cleared && st.mode === 'playing') { st.score += SC.clear; popup(`CLEAR +${SC.clear}`); } continue; }   // passed behind the skater
-      if (ox1 < sx0 || ox0 > sx1 || oz1 < sz0 || oz0 > sz1) continue;
-      if (o.clear !== null && sk.y > o.clear) { if (!o.cleared) sk.clearedThisJump++; o.cleared = true; continue; }
-      o.done = true; o.cleared = false;
-      if (o.kind === 'slip') slip(); else hit();
+      let ahead = false;
+      for (const p of o.parts) {
+        const cx = o.x + p.dx, cz = o.z + p.dz, x0 = cx - p.w / 2, x1 = cx + p.w / 2, z0 = cz - p.d / 2, z1 = cz + p.d / 2;
+        if (z0 <= sz1) ahead = true;
+        if (z1 < sz0 || z0 > sz1) continue;   // not alongside yet / already passed
+        const gap = Math.max(x0 - sx1, sx0 - x1);
+        if (gap > 0) { o.minGap = Math.min(o.minGap, gap); continue; }   // passing beside it: track how close
+        if (p.clear !== null && sk.y > p.clear) { if (!o.cleared) sk.clearedThisJump++; o.cleared = true; o.minV = Math.min(o.minV, sk.y - p.clear); continue; }
+        o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(); break;
+      }
+      if (!o.done && !ahead) {   // fully behind the skater
+        o.done = true; if (st.mode !== 'playing') continue;
+        if (o.cleared) { st.score += SC.clear; popup(`CLEAR +${SC.clear}`); }
+        if (o.minGap < SC.nearDist || (o.cleared && o.minV < SC.nearJump)) nearMiss(o);
+      }
     }
   }
 
@@ -355,10 +416,80 @@ export function createGame(ctx) {
     let n = 0;
     if (debug) {
       const h = helper(n++); h.box.min.set(sk.x - SKB.w / 2, sk.y, S.z - SKB.d / 2); h.box.max.set(sk.x + SKB.w / 2, sk.y + SKB.h, S.z + SKB.d / 2); h.material.color.setHex(COLORS.skater);
-      for (const o of OBS) { if (o.lane < 0 && !o.active) continue; const b = helper(n++); b.box.min.set(o.x - o.w / 2, 0, o.z - o.d / 2); b.box.max.set(o.x + o.w / 2, o.h, o.z + o.d / 2);
-        b.material.color.setHex(o.kind === 'slip' ? COLORS.slip : o.clear !== null ? COLORS.jump : COLORS.solid); }
+      for (const o of OBS) { if (o.lane < 0 && !o.active) continue;
+        for (const p of o.parts) { const b = helper(n++), cx = o.x + p.dx, cz = o.z + p.dz; b.box.min.set(cx - p.w / 2, 0, cz - p.d / 2); b.box.max.set(cx + p.w / 2, p.h, cz + p.d / 2);
+          b.material.color.setHex(p.kind === 'slip' ? COLORS.slip : p.clear !== null ? COLORS.jump : COLORS.solid); } }
     }
     for (let i = n; i < helpers.length; i++) helpers[i].visible = false;
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Autopilot (P): a simple bot that plays by the same rules. It only reads the hitboxes, steers with
+  // the normal carve and jumps with the normal charge. It counts a "trap" whenever no lane it can
+  // reach has a way through, which would mean an unfair row.
+  // -------------------------------------------------------------------------------------
+  const bot = { on: false, runs: 0, hits: 0, trapped: 0, trapLog: [], time: 0, spawned: 0, lastTrapZ: 1e9, label: null };
+  const fullAir = 2 * Math.sqrt(2 * J.maxHeight / J.gravity), tapAir = 2 * Math.sqrt(2 * J.minHeight / J.gravity);
+  function botCells(v, look) {
+    const lanes = LANE_X.map(() => []);
+    for (const o of OBS) { if (o.done) continue;
+      for (const p of o.parts) {
+        const cz = o.z + p.dz, d = S.z - (cz + p.d / 2) - SKB.d / 2; if (d < -p.d - SKB.d || d > look) continue;
+        let cx = o.x + p.dx; if (o.lane < 0) cx = o.xArr + o.dirX * o.vx * (clock + Math.max(0, d) / v - o.tArr) + p.dx;
+        const span = [cx];
+        if (o.drift) span.push(LANE_X[o.drift.to] + p.dx); if (o.change) span.push(LANE_X[o.change.to] + p.dx);
+        for (let l = 0; l < LANE_X.length; l++) if (span.some((x) => Math.abs(LANE_X[l] - x) < p.w / 2 + SKB.w / 2 + 0.12))
+          lanes[l].push({ d, kind: p.kind === 'slip' ? 'slip' : p.clear !== null && director.jumpable(p.clear, p.d, v) ? 'jump' : 'solid', depth: p.d });
+      } }
+    return lanes;
+  }
+  // lane planner: dynamic programming over (time step, lane). Each obstacle part occupies its lane(s) for the time the
+  // skater box overlaps it; carving to the next lane takes carveTime and occupies both lanes meanwhile. Returns the
+  // first move of the cheapest path and its cost (≥ 1e6 = every path runs into something solid: a trap).
+  function botPlan(v, lanes) {
+    const dtp = 0.1, H = 4, steps = Math.round(H / dtp), m = Math.max(1, Math.ceil(carveTime(v) / dtp)), N = LANE_X.length;
+    const canFull = st.energy >= EN.ollieMax || st.mode !== 'playing';
+    const occ = lanes.map((cells) => { const a = new Float64Array(steps + 1);
+      for (const c of cells) { const s0 = Math.max(0, Math.floor((c.d - 0.1) / v / dtp)), s1 = Math.min(steps, Math.ceil((c.d + c.depth + SKB.d + 0.1) / v / dtp));
+        const k = c.kind === 'solid' || (c.kind === 'jump' && !canFull) ? 1e6 : c.kind === 'jump' ? 30 : 8; for (let s = s0; s <= s1; s++) a[s] = Math.max(a[s], k); }
+      return a; });
+    const physical = clamp(Math.round((sk.x - LANE_X[0]) / L.width), 0, N - 1), startDelay = Math.round(Math.abs(sk.toX - sk.x) / Math.max(sk.speed * L.carveRatio, 0.5) / dtp);
+    const dp = Array.from({ length: steps + 1 }, () => new Float64Array(N).fill(Infinity)), first = Array.from({ length: steps + 1 }, () => new Int8Array(N));
+    let c0 = 0; for (let s = 0; s <= Math.min(startDelay, steps); s++) c0 += Math.max(occ[sk.lane][s], occ[physical][s]);
+    const s0 = Math.min(startDelay, steps); dp[s0][sk.lane] = c0; first[s0][sk.lane] = 0;
+    for (let s = s0; s < steps; s++) for (let l = 0; l < N; l++) { const c = dp[s][l]; if (c === Infinity) continue;
+      const stay = c + occ[l][s + 1]; if (stay < dp[s + 1][l]) { dp[s + 1][l] = stay; first[s + 1][l] = s === s0 ? 0 : first[s][l]; }
+      for (const d of [-1, 1]) { const n = l + d; if (n < 0 || n >= N) continue; const e = Math.min(steps, s + m); let mc = c;
+        for (let k = s + 1; k <= e; k++) mc += Math.max(occ[l][k], occ[n][k]); mc += 2;   // small cost per move: don't weave for nothing
+        if (mc < dp[e][n]) { dp[e][n] = mc; first[e][n] = s === s0 ? d : first[s][l]; } } }
+    let best = Infinity, move = 0; for (let l = 0; l < N; l++) if (dp[steps][l] < best) { best = dp[steps][l]; move = first[steps][l]; }
+    return { cost: best, move };
+  }
+  function autopilot() {
+    if (st.mode === 'title') { startGame(); bot.runs++; return; }
+    if (st.mode === 'over') { if (st.overT > G.overDelay + 0.5) { startGame(); bot.runs++; } return; }
+    const v = Math.max(sk.speed, 1), lanes = botCells(v, v * 4 + 4), plan = botPlan(v, lanes);
+    if (plan.cost >= 1e6 && Math.abs(S.z - bot.lastTrapZ) > 15) { bot.trapped++; bot.lastTrapZ = S.z;
+      if (bot.trapLog.length < 20) bot.trapLog.push({ dist: Math.round(st.dist), stage: stage(), lane: sk.lane, x: +sk.x.toFixed(2), energy: Math.round(st.energy), lanes: lanes.map((c) => c.map((x) => `${x.kind}@${x.d.toFixed(1)}`).join(' ')) }); }
+    if (plan.move && !sk.queue.length && sk.chT < 0) pressLane(plan.move);
+    // jumps: a full ollie timed so the apex is over a jumpable, a quick hop over a slip hazard
+    const cur = clamp(Math.round((sk.x - LANE_X[0]) / L.width), 0, LANE_X.length - 1);
+    if (grounded() && Math.abs(sk.x - LANE_X[cur]) < 0.4) {
+      const ahead = lanes[cur].filter((x) => x.d > 0 && x.kind !== 'solid').sort((a, b) => a.d - b.d)[0];
+      if (ahead) {
+        if (ahead.kind === 'jump' && ahead.d <= v * (J.chargeTime + 0.5 * fullAir) - ahead.depth / 2) { if (startCharge()) sk.demoHold = J.chargeTime; }
+        else if (ahead.kind === 'slip' && ahead.d <= v * (J.minCrouch + 0.5 * tapAir)) { if (startCharge()) sk.demoHold = 0; }
+      }
+    }
+  }
+  function setAutopilot(on) {
+    bot.on = on; if (!bot.label) { bot.label = document.createElement('div'); bot.label.id = 'gBot'; bot.label.textContent = 'AUTOPILOT'; document.body.appendChild(bot.label); }
+    bot.label.style.display = on ? '' : 'none';
+  }
+  function botReport() {
+    const min = bot.time / 60;
+    return { minutes: +min.toFixed(2), runs: bot.runs, obstaclesPerMin: +(bot.spawned / Math.max(min, 1e-3)).toFixed(1), hits: bot.hits, trapped: bot.trapped, trapLog: bot.trapLog,
+      stage: stage(), dist: Math.round(st.dist), nearMisses: st.nearMisses, patterns: { ...director.stats.patterns }, rejected: director.stats.rejected, violations: director.stats.violations.slice(-5) };
   }
 
   // -------------------------------------------------------------------------------------
@@ -368,7 +499,8 @@ export function createGame(ctx) {
   function update(dt) {
     if (st.paused) { writePose(sk.lean || 0); drawHitboxes(); return; }
     clock += dt;
-    if (st.mode === 'playing') st.playT += dt;
+    if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; }
+    if (bot.on) { autopilot(); if (st.mode === 'playing') bot.time += dt; }
     if (st.mode === 'over') { st.overT += dt; if (st.overT > G.overDelay && !ui.over.classList.contains('show')) showScreens(); }
     // title screen: cruise and throw the odd trick for show
     if (st.mode === 'title') { st.titleT -= dt; if (st.titleT <= 0 && grounded()) { st.titleT = 2.5 + Math.random() * 2.5;
@@ -379,7 +511,7 @@ export function createGame(ctx) {
     if (sk.mode === 'slip' || sk.mode === 'bail') { /* hold the reduced speed until back on the board */ }
     else if (sk.speed < tgt) sk.speed = Math.min(tgt, sk.speed + G.speed.recoverRate * dt);
     else sk.speed = Math.max(tgt, sk.speed - (st.mode === 'over' ? G.speed.crashDecel : G.speed.recoverRate * 2) * dt);
-    S.speed = sk.speed; S.moving = sk.speed > 0.05; S.z -= sk.speed * dt;
+    S.speed = sk.speed; S.moving = sk.speed > 0.05; const zPrev = S.z; S.z -= sk.speed * dt;
     if (st.mode === 'playing') { st.dist += sk.speed * dt; st.score += sk.speed * dt * SC.perMetre; st.energy = Math.min(EN.max, st.energy + EN.regen * dt);
       // health slowly refills once you've gone a while without taking damage
       st.sinceHit += dt; if (st.sinceHit > HP.regenDelay) st.health = Math.min(HP.max, st.health + HP.regen * dt); }
@@ -390,11 +522,10 @@ export function createGame(ctx) {
 
     // obstacles: spawn ahead, move pedestrians and crossing traffic, collide, recycle behind
     spawnAhead();
-    for (const o of OBS) {
-      if (o.lane < 0) updateCrossing(o, dt);
-      else if (o.vz) { o.az += o.vz * dt; o.z = o.az + o.zOff; if (o.ped) o.ped.z = o.az; else o.mesh.position.z = o.az; }
-    }
-    if (st.mode === 'playing') collide();
+    for (const o of OBS) { if (o.lane < 0) updateCrossing(o); else updateObstacle(o, dt); }
+    // collisions in sub-steps of ≤ 0.3 m so a fast frame can't skip over an obstacle
+    if (st.mode === 'playing') { const zNow = S.z, n = Math.max(1, Math.ceil((zPrev - zNow) / 0.3));
+      for (let i = 1; i <= n; i++) { S.z = zPrev + (zNow - zPrev) * i / n; collide(); } S.z = zNow; }
     for (let i = OBS.length - 1; i >= 0; i--) if (OBS[i].z > S.z + SP.despawn) removeObstacle(i);
 
     S.shake = Math.max(0, (S.shake || 0) - dt);
@@ -419,6 +550,7 @@ export function createGame(ctx) {
   function keydown(e) {
     const k = e.key;
     if (k === 'h' || k === 'H') { debug = !debug; return true; }
+    if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
     if (st.paused) { if (k === 'Enter' || k === ' ' || k === 'Escape') { if (!e.repeat) setPaused(false); return true; } return LEFT.includes(k) || RIGHT.includes(k) || k === 'ArrowUp'; }
     if (st.mode === 'title') { if ((k === 'Enter' || k === ' ') && !e.repeat) { startGame(); return true; } return k === ' ' || k.startsWith('Arrow'); }
     if (st.mode === 'over') { if ((k === 'Enter' || k === ' ') && !e.repeat && st.overT > G.overDelay) startGame(); return k === ' ' || k.startsWith('Arrow') || k === 'Enter'; }
@@ -439,6 +571,6 @@ export function createGame(ctx) {
     update, keydown, keyup,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
-    st, sk, OBS, LANE_X, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
+    st, sk, OBS, LANE_X, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
 }

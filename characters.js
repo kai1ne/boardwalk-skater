@@ -27,6 +27,11 @@ function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; le
 let R = mulberry32(4242);
 const rand = (a, b) => a + (b - a) * R(), randi = (a, b) => Math.floor(rand(a, b + 1)), chance = (p) => R() < p;
 const pick = (arr) => arr[Math.floor(R() * arr.length)];
+// merge [geometry, hexColor] pairs into one vertex-coloured geometry (for small props)
+function mergeColored0(list) {
+  return mergeGeometries(list.map(([g, c]) => { const col = new THREE.Color(c), n = g.attributes.position.count, arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; } g.setAttribute('color', new THREE.BufferAttribute(arr, 3)); return g; }));
+}
 function wpick(pairs) { let s = 0; for (const p of pairs) s += p[1]; let r = R() * s; for (const p of pairs) { r -= p[1]; if (r <= 0) return p[0]; } return pairs[0][0]; }
 
 // -------------------------------------------------------------------------------------
@@ -268,7 +273,7 @@ export async function createCharacters(ctx) {
   // ---------------- props shared by rigs ----------------
   const phoneMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.3, metalness: 0.4, emissive: 0x9ab8ff, emissiveIntensity: 0.0 });
   const phoneGeo = new THREE.BoxGeometry(0.075, 0.155, 0.009);
-  const leashMat = new THREE.LineBasicMaterial({ color: 0x222222 });
+  const leashMat = new THREE.MeshStandardMaterial({ color: 0xd2342a, roughness: 0.6 }), leashGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 5).translate(0, 0.5, 0);   // unit cord along +y, stretched hand → collar
 
   // ---------------- rigs ----------------
   const OV_BONES = ['spine_01', 'spine_02', 'neck_01', 'Head', 'upperarm_l', 'lowerarm_l', 'hand_l', 'upperarm_r', 'lowerarm_r', 'hand_r', 'thigh_l', 'calf_l', 'foot_l', 'thigh_r', 'calf_r', 'foot_r'];
@@ -373,7 +378,7 @@ export async function createCharacters(ctx) {
   const DOG_T = [prepDog(gShiba, 'shiba'), prepDog(gHusky, 'husky')];
   class DogRig { constructor(T) { this.T = T; this.root = SkeletonUtils.clone(T.g.scene); this.root.scale.setScalar(T.s); this.wrap = new THREE.Group(); this.wrap.add(this.root);
     this.mixer = new THREE.AnimationMixer(this.root); this.walk = this.mixer.clipAction(T.walk); this.idle = this.mixer.clipAction(T.idle); this.walk.play(); this.idle.play(); this.idle.weight = 0;
-    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)); this.leash = new THREE.Line(lg, leashMat); this.leash.frustumCulled = false;
+    this.leash = new THREE.Mesh(leashGeo, leashMat); this.leash.frustumCulled = false; this.leash.castShadow = true;
     this.agent = null; this.inScene = false; } }
   const DOGS = []; for (let i = 0; i < Q.dogs; i++) DOGS.push(new DogRig(DOG_T[i % 2]));
 
@@ -405,7 +410,7 @@ export async function createCharacters(ctx) {
   const hatGeo = new THREE.CylinderGeometry(0.16, 0.13, 0.08, 14, 1, true).translate(0, 0.04, 0), hatMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.9, side: THREE.DoubleSide });
   // bench sitters use the chair clip on a bench; the beggar, smoker and drummers sit on the ground (FLOOR = the
   // seat height the chair clip is placed at, so the pelvis ends up just above the ground; legs are posed by IK)
-  const SIT_KINDS = new Set(['sit', 'beg', 'smoke', 'drum']), FLOOR = 0.03;
+  const SIT_KINDS = new Set(['sit', 'beg', 'smoke', 'drum', 'guitar']), FLOOR = 0.03;
   const drumGeo = new THREE.LatheGeometry([[0.09, 0], [0.12, 0.04], [0.075, 0.2], [0.07, 0.3], [0.13, 0.46], [0.17, 0.56], [0.175, 0.6], [0, 0.6]].map(([x, y]) => new THREE.Vector2(x, y)), 18);
   const drumMats = ['#7a4a26', '#5a3418', '#9a6232'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
   const cupGeo = new THREE.CylinderGeometry(0.045, 0.036, 0.11, 12, 1, true).translate(0, 0.055, 0), cupMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.8, side: THREE.DoubleSide });
@@ -416,10 +421,16 @@ export async function createCharacters(ctx) {
     txt.split('|').forEach((line, i) => { x.save(); x.translate(128, 60 + i * 64); x.rotate((Math.random() - 0.5) * 0.08); x.fillText(line, 0, 0); x.restore(); });
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; });
   const signGeo = new THREE.PlaneGeometry(0.5, 0.36).translate(0, 0.18, 0), signMats = signTex.map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.95, side: THREE.DoubleSide }));
+  const guitarGeo = mergeColored0([[new THREE.SphereGeometry(1, 14, 8).scale(0.2, 0.16, 0.06), 0x9a5a2a], [new THREE.SphereGeometry(1, 12, 8).scale(0.15, 0.12, 0.062).translate(0.17, 0, 0), 0x9a5a2a],
+    [new THREE.CylinderGeometry(0.045, 0.045, 0.01, 12).rotateX(Math.PI / 2).translate(0.05, 0, 0.06), 0x1a120c], [new THREE.BoxGeometry(0.5, 0.045, 0.025).translate(0.52, 0, 0.02), 0x3a2414], [new THREE.BoxGeometry(0.12, 0.06, 0.03).translate(0.82, 0, 0.02), 0x2a1a10]]);
+  const keysGeo = mergeColored0([[new THREE.BoxGeometry(1.0, 0.06, 0.3).translate(0, 0.85, 0), 0x18181a], [new THREE.BoxGeometry(0.94, 0.012, 0.13).translate(0, 0.885, 0.07), 0xf2f0ea],
+    ...[-0.4, 0.4].flatMap((x) => [[new THREE.BoxGeometry(0.03, 0.82, 0.03).translate(x, 0.41, -0.06).rotateX(0.18), 0x2a2a2a], [new THREE.BoxGeometry(0.03, 0.82, 0.03).translate(x, 0.41, 0.06).rotateX(-0.18), 0x2a2a2a]])]);
+  const propVcol = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
   class Prop { constructor() { this.towel = new THREE.Mesh(towelGeo, towelMats[0]); this.speaker = new THREE.Mesh(speakerGeo, speakerMat); this.hat = new THREE.Mesh(hatGeo, hatMat);
     this.drum = new THREE.Mesh(drumGeo, drumMats[0]); this.drum.scale.setScalar(0.8);   // a smaller djembe for playing seated on the ground
     this.cup = new THREE.Mesh(cupGeo, cupMat); this.sign = new THREE.Mesh(signGeo, signMats[0]); this.cig = new THREE.Mesh(cigGeo, cigMat);
-    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig);
+    this.guitar = new THREE.Mesh(guitarGeo, propVcol); this.keys = new THREE.Mesh(keysGeo, propVcol);
+    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig, this.guitar, this.keys);
     this.g.traverse((m) => { if (m.isMesh) { m.castShadow = m !== this.cig; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
   const PROPS = []; for (let i = 0; i < 30; i++) PROPS.push(new Prop());
 
@@ -476,10 +487,11 @@ export async function createCharacters(ctx) {
   // people standing or lying still in a lane: 'selfie' (phone held up, a.ry = facing) or 'lie' (on a towel)
   function addGameStation({ kind, x, z, ry, seed, sex }) {
     R = mulberry32(seed >>> 0); const a = newAgent(kind, sex); a.game = true; a.x = x; a.y = 0; a.z = z; a.ry = ry; a.scale = clamp(a.scale, 0.93, 1.0);
-    a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
+    a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : kind === 'watch' && chance(0.35) ? CLIP.talk : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
     if (SIT_KINDS.has(kind)) a.y = FLOOR;   // sitting on the ground
     GAME_AGENTS.push(a); return a;
   }
+  function setClip(a, name, ts = a.ts) { a.clip = CLIP[name] || name; a.ts = ts; if (a.rig) a.rig.play(a.clip, { fade: 0.3, ts }); }
   function removeGameWalker(a) { const i = GAME_AGENTS.indexOf(a); if (i >= 0) GAME_AGENTS.splice(i, 1); if (a.rig) releaseRig(a.rig); }
   // game-controlled traffic crossing the boardwalk along x (dirX = ±1); the game sets a.x and a.speed each frame
   // riders: dirX = ±1 crosses the boardwalk; dirZ = ±1 rides along a lane (+1 = toward the camera)
@@ -543,7 +555,7 @@ export async function createCharacters(ctx) {
   function assignRig(a) {
     const pool = POOL[a.sex]; let r = null; for (const x of pool) if (!x.agent) { r = x; break; } if (!r) return false;
     // IK-driven rigs keep a uniform scale so world-space bone maths stays exact
-    const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
+    const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || a.kind === 'piano' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
     r.agent = a; a.rig = r; r.setApp(a.app); r.acc = 0; r.wrap.scale.set(a.scale * wb, a.scale, a.scale * wb);
     placeRig(a); r.snap(currentClip(a), a.t0 + performance.now() * 0.001, a.ts); r.phone.visible = a.kind === 'selfie'; ensureInScene(r);
     if (a.dog) { let d = DOGS.find((x) => !x.agent && x.T === a.dog) || DOGS.find((x) => !x.agent);
@@ -553,19 +565,20 @@ export async function createCharacters(ctx) {
       if (!b && a.game) { b = BIKES.find((x) => x.agent && !x.agent.game); if (b) releaseRig(b.agent.rig); }   // game traffic takes a bike from an ambient cyclist
       if (b) { b.agent = a; a.bike = b; ensureInScene(b); } }
     if (a.kind === 'skate') { const bd = CRUISE_BOARDS.find((x) => !x.agent); if (bd) { bd.agent = a; a.board = bd; bd.deck.children[0].material.color.setHex(a.deckColor); ensureInScene(bd); } }
-    if (a.kind === 'lie' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit')) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
+    if (a.kind === 'lie' || a.kind === 'piano' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit')) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
     return true;
   }
   function setupProp(a) { const p = a.prop, lie = a.kind === 'lie', perf = a.kind === 'perform', sit = SIT_KINDS.has(a.kind), h = a.st.seed >>> 3;
     p.towel.visible = lie; p.speaker.visible = perf && a.st.act === 'dance'; p.hat.visible = perf;
     p.towel.material = towelMats[h % towelMats.length];
     p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.52);
+    p.guitar.visible = a.kind === 'guitar'; p.keys.visible = a.kind === 'piano'; p.keys.position.set(0, 0, 0.42);
     p.cup.visible = a.kind === 'beg'; p.sign.visible = a.kind === 'beg'; p.sign.material = signMats[h % signMats.length]; p.sign.position.set(-0.42, 0, 0.3); p.sign.rotation.set(-0.25, 0.35, 0);
     p.cig.visible = a.kind === 'smoke';
     p.g.position.set(a.x, sit ? a.y - FLOOR : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
     p.speaker.position.set(0.9, 0, -0.3); p.hat.position.set(0.1, 0, 0.75); p.towel.position.set(0, 0, 0); }
   function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick; a.key = a.game ? a.dist - 1e4 : a.dist;
-    a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < Q.rRig) cands.push(a); }
+    a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < (a.game ? Q.rRig * 1.5 : Q.rRig)) cands.push(a); }   // game obstacles get rigs further out (they spawn further ahead at speed)
   // walkers side-step people standing on the walk (performers, their audience, selfie-takers)
   const OBST = [];
   function avoidX(a) { let off = 0; for (let i = 0; i < OBST.length; i++) { const o = OBST[i], dz = Math.abs(o.z - a.z), dx = a.x - o.x;
@@ -573,7 +586,7 @@ export async function createCharacters(ctx) {
   function currentClip(a) { return a.kind === 'walk' && a.stopFor > 0 ? a.stopClip : a.clip; }
 
   // world placement for an agent's rig root
-  const _q = new QT(), _e = new THREE.Euler();
+  const _q = new QT(), _e = new THREE.Euler(), _lq = new QT(), _Zax = new V3(0, 0, 1);
   function placeRig(a) {
     const r = a.rig, w = r.wrap, c = calib[a.sex];
     if (a.kind === 'walk') { w.position.set(a.x + (a.game ? 0 : avoidX(a)), 0, a.z); w.rotation.set(0, a.stopFor > 0 ? a.stopYaw : (a.dir > 0 ? 0 : Math.PI), 0); }
@@ -586,14 +599,15 @@ export async function createCharacters(ctx) {
       const py = c.drive.y * a.scale, pz = c.drive.z * a.scale, off = BK.saddle.z - pz;
       w.position.set(a.x + Math.sin(yaw) * off, BK.saddle.y + 0.1 - py, a.z + Math.cos(yaw) * off);
       if (b) { b.g.position.set(a.x, 0, a.z); b.g.rotation.set(0, yaw, 0); } }
-    else if (a.kind === 'skate') {   // cruising side-on on a board, like the player's skater
-      const bd = a.board; if (bd) { bd.board.position.set(a.x, 0, a.z); bd.board.rotation.set(0, a.yaw, 0); }
-      _q.setFromAxisAngle(_UP, a.yaw); w.quaternion.copy(_q).multiply(_sideQ); _p.set(-0.03, -0.3 * 0.24, 0).applyQuaternion(_q); w.position.set(a.x + _p.x, _p.y, a.z + _p.z); }
+    else if (a.kind === 'skate') {   // cruising side-on on a board, like the player's skater; a.lean tips rider and board about the travel axis
+      _q.setFromAxisAngle(_UP, a.yaw); if (a.lean) _q.multiply(_lq.setFromAxisAngle(_Zax, a.lean));
+      const bd = a.board; if (bd) { bd.board.position.set(a.x, 0, a.z); bd.board.quaternion.copy(_q); }
+      w.quaternion.copy(_q).multiply(_sideQ); _p.set(-0.03, -0.3 * 0.24, 0).applyQuaternion(_q); w.position.set(a.x + _p.x, _p.y, a.z + _p.z); }
     else { w.position.set(a.x, a.y, a.z); w.rotation.set(0, a.ry, 0); }
   }
 
   // ---------------- procedural overrides (run after mixer.update) ----------------
-  const _t = new V3(), _p = new V3(), _h = new V3(), _f = new V3(), _r = new V3(), _u = new V3(0, 1, 0), _d = new V3();
+  const _t = new V3(), _p = new V3(), _h = new V3(), _f = new V3(), _r = new V3(), _u = new V3(0, 1, 0), _d = new V3(), _u0 = new V3(0, 1, 0);
   function selfie(r, t) {
     const B = r.bones; r.wrap.updateMatrixWorld(true);
     r.wrap.getWorldQuaternion(_q); _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);
@@ -618,7 +632,7 @@ export async function createCharacters(ctx) {
     _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);   // character forward / right
     const g0 = a.y - FLOOR, fh = calib[r.sex].footH * 0.8;
     // legs on the ground: drummers (and half the beggars) cross-legged, everyone else knees up with feet flat
-    const cross = a.kind === 'drum' || (a.kind === 'beg' && a.phase < 0.5);
+    const cross = a.kind === 'drum' || a.kind === 'guitar' || (a.kind === 'beg' && a.phase < 0.5);
     B.pelvis.getWorldPosition(_hp);
     for (const side of [1, -1]) {   // +1 = left leg
       const L = side > 0;
@@ -627,9 +641,19 @@ export async function createCharacters(ctx) {
       _t.y = g0 + fh;
       ik2(L ? B.thigh_l : B.thigh_r, L ? B.calf_l : B.calf_r, L ? B.foot_l : B.foot_r, _t, _p);
     }
-    // the free hand rests on its knee (both hands drum for drummers)
-    if (a.kind !== 'drum') { B.calf_l.getWorldPosition(_t); _t.addScaledVector(_UP, 0.06).addScaledVector(_f, -0.04); _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, -0.5);
+    // the free hand rests on its knee (both hands drum for drummers, the guitarist plays)
+    if (a.kind !== 'drum' && a.kind !== 'guitar') { B.calf_l.getWorldPosition(_t); _t.addScaledVector(_UP, 0.06).addScaledVector(_f, -0.04); _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, -0.5);
       ik2(B.upperarm_l, B.lowerarm_l, B.hand_l, _t, _p, 0.85); }
+    if (a.kind === 'guitar' && P) {   // guitar across the lap, neck up to the left: strum with the right hand, fret with the left
+      B.pelvis.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_f, 0.24).addScaledVector(_UP, 0.26).addScaledVector(_r, 0.04);
+      _gx.copy(_r).multiplyScalar(-Math.cos(0.5)).addScaledVector(_UP, Math.sin(0.5)).normalize(); _gz.copy(_f); _gy.crossVectors(_gz, _gx).normalize(); _gz.crossVectors(_gx, _gy);
+      _gm.makeBasis(_gx, _gy, _gz); _gq.setFromRotationMatrix(_gm); P.g.getWorldQuaternion(_sq); P.guitar.quaternion.copy(_sq.invert().multiply(_gq));
+      _hp.copy(_t); P.g.worldToLocal(_hp); P.guitar.position.copy(_hp);
+      const strum = Math.sin(t * 7 + a.phase * 6);
+      _p.copy(_t).addScaledVector(_f, 0.07).addScaledVector(_UP, strum * 0.06).addScaledVector(_gx, 0.04); _h.copy(_UP).multiplyScalar(-1).addScaledVector(_r, 0.6); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _p, _h);
+      _p.copy(_t).addScaledVector(_gx, 0.5 + Math.sin(t * 0.9 + a.phase * 3) * 0.06).addScaledVector(_f, 0.05); _h.copy(_UP).multiplyScalar(-1).addScaledVector(_r, -0.6); ik2(B.upperarm_l, B.lowerarm_l, B.hand_l, _p, _h);
+      return;
+    }
     if (a.kind === 'drum') {
       for (const side of [1, -1]) {   // +1 = left hand; hands alternate, each beat is a quick drop onto the head
         const beat = Math.max(0, Math.sin(t * (8 + a.phase * 2) + a.phase * 6.28 + (side > 0 ? 0 : Math.PI)));
@@ -652,6 +676,27 @@ export async function createCharacters(ctx) {
       if (P) handTo(P.cup, P, B.hand_r, 0.03, 0.02);
     }
   }
+  const _gx = new V3(), _gy = new V3(), _gz = new V3(), _gm = new THREE.Matrix4(), _gq = new QT();
+  // standing keyboard player: hands walk up and down the keys, a little bounce on each note
+  function pianoArms(a, r, t) {
+    const B = r.bones; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q); _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);
+    for (const side of [1, -1]) { const L = side > 0, k = t * 2.2 + a.phase * 6 + (L ? 0 : 1.7);
+      _t.set(a.x, 0.9 + Math.max(0, Math.sin(k * 3)) * 0.03, a.z).addScaledVector(_f, 0.36).addScaledVector(_r, -side * (0.18 + Math.sin(k) * 0.08));
+      _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, -side * 0.7); ik2(L ? B.upperarm_l : B.upperarm_r, L ? B.lowerarm_l : B.lowerarm_r, L ? B.hand_l : B.hand_r, _t, _p); }
+    rotWorld(B.Head, _r, 0.25);
+  }
+  const cueTex = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 64; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const bellTex = cueTex((x) => { x.fillStyle = 'rgba(0,0,0,0.35)'; x.beginPath(); x.arc(32, 32, 30, 0, 6.29); x.fill(); x.fillStyle = '#ffd23f';
+    x.beginPath(); x.moveTo(18, 42); x.quadraticCurveTo(20, 14, 32, 14); x.quadraticCurveTo(44, 14, 46, 42); x.closePath(); x.fill(); x.fillRect(14, 41, 36, 5); x.beginPath(); x.arc(32, 50, 4, 0, 6.29); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = 3; for (const s of [-1, 1]) { x.beginPath(); x.arc(32, 30, 24, s > 0 ? -0.5 : Math.PI - 0.3, s > 0 ? 0.3 : Math.PI + 0.5); x.stroke(); } });
+  const flashTex = cueTex((x) => { const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,250,235,0.85)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); });
+  const CUES = []; for (let i = 0; i < 8; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bellTex, transparent: true, depthWrite: false })); s.visible = false; s.renderOrder = 5; crowdGroup.add(s); CUES.push(s); }
+  function cue(a, type) { const s = CUES.find((c) => !c.visible); if (!s || !a.rig) return; s.userData = { a, type, t: 0, life: type === 'bell' ? 1.1 : 0.22 };
+    s.material.map = type === 'bell' ? bellTex : flashTex; s.material.blending = type === 'bell' ? THREE.NormalBlending : THREE.AdditiveBlending; s.material.needsUpdate = true; s.visible = true; }
+  function updateCues(dt) { for (const s of CUES) if (s.visible) { const u = s.userData; u.t += dt; const a = u.a, k = u.t / u.life;
+      if (k >= 1 || !a.rig) { s.visible = false; continue; }
+      if (u.type === 'bell') { s.position.set(a.x, 2.3 + Math.abs(Math.sin(u.t * 14)) * 0.08, a.z); s.scale.setScalar(0.65); s.material.opacity = 1 - smooth(0.7, 1, k); s.material.rotation = Math.sin(u.t * 24) * 0.3; }
+      else { a.rig.phone.getWorldPosition(s.position); s.scale.setScalar(0.5 + k * 1.2); s.material.opacity = 1 - k; s.material.rotation = 0; } } }
   // smoke puffs: a small pool of fading spheres
   const PUFFS = []; { const pg = new THREE.SphereGeometry(0.05, 8, 6);
     for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
@@ -809,15 +854,19 @@ export async function createCharacters(ctx) {
       r.acc += dt;
       if (near || (tick + r.body.id) % Q.midEvery === 0) { if (a.kind === 'walk' && a.stopFor <= 0 && r.cur) r.cur.timeScale = a.ts; r.update(r.acc); r.acc = 0; stats.mixers++;
         if (a.kind === 'skate') { r.saveOverride(); cruise(a, r); }
-        else if (a.kind === 'beg' || a.kind === 'smoke' || a.kind === 'drum') { r.saveOverride(); sitArms(a, r, t); }
+        else if (a.kind === 'beg' || a.kind === 'smoke' || a.kind === 'drum' || a.kind === 'guitar') { r.saveOverride(); sitArms(a, r, t); }
+        else if (a.kind === 'piano') { r.saveOverride(); pianoArms(a, r, t); }
         else if (a.kind === 'selfie') { r.saveOverride(); selfie(r, t); } else if (a.kind === 'lie') { r.saveOverride(); lieArms(r); } else if (a.kind === 'cycle') { r.saveOverride(); cycle(a, r); } }
       if (near) stats.near++; else stats.mid++;
       // dog on a lead, trotting beside the owner at the owner's pace
-      const d = a.dogRig; if (d) { stats.dogs++; const side = a.game ? 0 : a.offX >= 0 ? -1 : 1, moving = a.stopFor <= 0;
-        d.wrap.position.set(a.x + side * 0.75, 0, a.z + a.dir * (a.game ? 1.25 : 0.9)); d.wrap.rotation.y = moving ? (a.dir > 0 ? 0 : Math.PI) : d.wrap.rotation.y;
+      // dog on a lead at the owner's pace: ambient dogs trot alongside; game dogs walk out to the side (a.dogSide m)
+      // so the lead stretches across a lane, held in the hand on that side
+      const d = a.dogRig; if (d) { stats.dogs++; const side = a.game ? (a.dogSide || 0) : (a.offX >= 0 ? -1 : 1) * 0.75, moving = a.stopFor <= 0 && !a.halt;
+        d.wrap.position.set(a.x + side, 0, a.z + a.dir * (a.game ? (a.dogSide ? 0.35 : 1.25) : 0.9)); d.wrap.rotation.y = moving ? (a.dir > 0 ? 0 : Math.PI) : d.wrap.rotation.y;
         d.walk.weight = lerp(d.walk.weight, moving ? 1 : 0, 1 - Math.exp(-dt * 6)); d.idle.weight = 1 - d.walk.weight; d.walk.timeScale = a.speed / (d.T.speed);
-        d.mixer.update(dt); r.bones.hand_r.getWorldPosition(_p); d.wrap.updateMatrixWorld(true); _h.set(0, 0.45, 0.25); d.wrap.localToWorld(_h);
-        const pa = d.leash.geometry.attributes.position; pa.setXYZ(0, _p.x, _p.y, _p.z); pa.setXYZ(1, _h.x, _h.y, _h.z); pa.needsUpdate = true; }
+        d.mixer.update(dt); const leftX = a.dir > 0 ? 1 : -1; (side * leftX > 0 ? r.bones.hand_l : r.bones.hand_r).getWorldPosition(_p);
+        d.wrap.updateMatrixWorld(true); _h.set(0, 0.45, 0.25); d.wrap.localToWorld(_h);
+        _d.subVectors(_h, _p); const len = _d.length(); d.leash.position.copy(_p); d.leash.quaternion.setFromUnitVectors(_u0, _d.divideScalar(Math.max(len, 1e-4))); d.leash.scale.set(1, len, 1); }
       if (a.board) for (const w of a.board.wheels) w.rotation.x -= a.speed * dt / 0.027;
       if (a.bike) { const b = a.bike; for (const w of b.wheels) w.rotation.x += a.speed * dt / BK.wheelR; b.crank.rotation.x = a.crank - Math.PI / 2; }
     }
@@ -833,7 +882,7 @@ export async function createCharacters(ctx) {
       _q.setFromAxisAngle(_u.set(0, 1, 0), yaw); _M.compose(_p.set(a.x, 0, a.z), _q, _S.set(a.scale * a.w, a.scale, 1)); impostors.setMatrixAt(n++, _M); }
     impostors.count = n; impostors.instanceMatrix.needsUpdate = true; aCell.needsUpdate = true; stats.imp = n;
 
-    updatePuffs(dt);
+    updatePuffs(dt); updateCues(dt);
     updateSkater(dt, t);
   }
   const _M = new THREE.Matrix4(), _S = new V3();
@@ -842,6 +891,6 @@ export async function createCharacters(ctx) {
   const aoHidden = [];
   function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
-  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
+  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
 }
