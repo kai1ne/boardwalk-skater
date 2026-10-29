@@ -131,7 +131,8 @@ const GAME = {
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
   health: { max: 100, hit: 34,             // damage from running into an obstacle (3 hits = game over)
             slip: 10,                      // damage from slipping on pizza or poop (not if you jump within the coyote window)
-            fall: 20 },                    // damage from a wipeout
+            fall: 20,                      // damage from a wipeout
+            regenDelay: 8, regen: 1.5 },   // after 8 s without damage, health refills at 1.5 per second (a 34 hit back in ~23 s)
   hazards: { shake: 0.3, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit
   skaterBox: { w: 0.5, d: 0.9, h: 1.75 },  // collision box (m)
   obstacles: {                             // AABB sizes (m); clear = board height needed to pass over (null = can't be jumped)

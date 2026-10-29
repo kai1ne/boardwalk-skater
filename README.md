@@ -42,7 +42,8 @@ Skate as far as you can. Speed starts at 27 km/h and climbs to 58 km/h.
 
 - **Health** (top right): every obstacle you run into costs health: 34 for anything solid (3 hits end the run) and
   10 for slipping on pizza or poop. Each obstacle can only hit you once, and there's no invincibility window, so
-  back-to-back hits each count. A hit gives a short camera jolt.
+  back-to-back hits each count. A hit gives a short camera jolt. After 8 s without damage, health slowly refills
+  at 1.5 per second.
 - **Energy**: every jump costs 8–40 depending on how high you go (the trick comes with the height). It refills at
   6 per second. A big jump with too little energy is cut down to what you can afford, so you get a lower trick. While you hold jump, the dark end of the bar shows what the
   jump will cost. With no energy you can't jump.

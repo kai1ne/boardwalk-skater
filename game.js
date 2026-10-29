@@ -177,11 +177,11 @@ export function createGame(ctx) {
   function breakCombo() { if (st.combo > 1 && st.mode === 'playing') popup('combo lost', 'bad'); st.combo = 0; st.comboT = 0; }
   function damage(n, label) {
     if (st.mode !== 'playing') return;
-    st.health = Math.max(0, st.health - n); flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
+    st.health = Math.max(0, st.health - n); st.sinceHit = 0; flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
     if (st.health <= 0) gameOver();
   }
   function startGame() {
-    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, nextCross: rand(...SP.crossFirst) });
+    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, nextCross: rand(...SP.crossFirst) });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 });
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay;
     ui.pops.textContent = ''; showScreens();
@@ -380,7 +380,9 @@ export function createGame(ctx) {
     else if (sk.speed < tgt) sk.speed = Math.min(tgt, sk.speed + G.speed.recoverRate * dt);
     else sk.speed = Math.max(tgt, sk.speed - (st.mode === 'over' ? G.speed.crashDecel : G.speed.recoverRate * 2) * dt);
     S.speed = sk.speed; S.moving = sk.speed > 0.05; S.z -= sk.speed * dt;
-    if (st.mode === 'playing') { st.dist += sk.speed * dt; st.score += sk.speed * dt * SC.perMetre; st.energy = Math.min(EN.max, st.energy + EN.regen * dt); }
+    if (st.mode === 'playing') { st.dist += sk.speed * dt; st.score += sk.speed * dt * SC.perMetre; st.energy = Math.min(EN.max, st.energy + EN.regen * dt);
+      // health slowly refills once you've gone a while without taking damage
+      st.sinceHit += dt; if (st.sinceHit > HP.regenDelay) st.health = Math.min(HP.max, st.health + HP.regen * dt); }
 
     const lean = updateSkater(dt);
     S.x = sk.x; S.camRoll = lean * L.camRoll;
