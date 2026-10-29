@@ -403,11 +403,9 @@ export async function createCharacters(ctx) {
   const towelGeo = new THREE.BoxGeometry(0.85, 0.012, 1.85).translate(0, 0.006, 0);
   const speakerGeo = new THREE.BoxGeometry(0.34, 0.5, 0.3).translate(0, 0.25, 0), speakerMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.6 });
   const hatGeo = new THREE.CylinderGeometry(0.16, 0.13, 0.08, 14, 1, true).translate(0, 0.04, 0), hatMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.9, side: THREE.DoubleSide });
-  // seated people (beggar, smoker, drummer) sit on an upturned bucket or a milk crate
-  const SIT_KINDS = new Set(['sit', 'beg', 'smoke', 'drum']), SEAT = 0.4;
-  const crateGeo = mergeGeometries([new THREE.BoxGeometry(0.36, 0.03, 0.32).translate(0, SEAT - 0.015, 0), ...[-1, 1].flatMap((s) => [new THREE.BoxGeometry(0.36, SEAT - 0.03, 0.02).translate(0, (SEAT - 0.03) / 2, s * 0.15), new THREE.BoxGeometry(0.02, SEAT - 0.03, 0.32).translate(s * 0.17, (SEAT - 0.03) / 2, 0)])]);
-  const bucketGeo = new THREE.CylinderGeometry(0.135, 0.15, SEAT, 16).translate(0, SEAT / 2, 0);
-  const seatMats = ['#1f5fb8', '#c8302c', '#202020', '#e8862a', '#f4f4f2'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
+  // bench sitters use the chair clip on a bench; the beggar, smoker and drummers sit on the ground (FLOOR = the
+  // seat height the chair clip is placed at, so the pelvis ends up just above the ground; legs are posed by IK)
+  const SIT_KINDS = new Set(['sit', 'beg', 'smoke', 'drum']), FLOOR = 0.03;
   const drumGeo = new THREE.LatheGeometry([[0.09, 0], [0.12, 0.04], [0.075, 0.2], [0.07, 0.3], [0.13, 0.46], [0.17, 0.56], [0.175, 0.6], [0, 0.6]].map(([x, y]) => new THREE.Vector2(x, y)), 18);
   const drumMats = ['#7a4a26', '#5a3418', '#9a6232'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
   const cupGeo = new THREE.CylinderGeometry(0.045, 0.036, 0.11, 12, 1, true).translate(0, 0.055, 0), cupMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.8, side: THREE.DoubleSide });
@@ -419,9 +417,9 @@ export async function createCharacters(ctx) {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; });
   const signGeo = new THREE.PlaneGeometry(0.5, 0.36).translate(0, 0.18, 0), signMats = signTex.map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.95, side: THREE.DoubleSide }));
   class Prop { constructor() { this.towel = new THREE.Mesh(towelGeo, towelMats[0]); this.speaker = new THREE.Mesh(speakerGeo, speakerMat); this.hat = new THREE.Mesh(hatGeo, hatMat);
-    this.crate = new THREE.Mesh(crateGeo, seatMats[0]); this.bucket = new THREE.Mesh(bucketGeo, seatMats[3]); this.drum = new THREE.Mesh(drumGeo, drumMats[0]);
+    this.drum = new THREE.Mesh(drumGeo, drumMats[0]); this.drum.scale.setScalar(0.8);   // a smaller djembe for playing seated on the ground
     this.cup = new THREE.Mesh(cupGeo, cupMat); this.sign = new THREE.Mesh(signGeo, signMats[0]); this.cig = new THREE.Mesh(cigGeo, cigMat);
-    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.crate, this.bucket, this.drum, this.cup, this.sign, this.cig);
+    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig);
     this.g.traverse((m) => { if (m.isMesh) { m.castShadow = m !== this.cig; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
   const PROPS = []; for (let i = 0; i < 30; i++) PROPS.push(new Prop());
 
@@ -479,7 +477,7 @@ export async function createCharacters(ctx) {
   function addGameStation({ kind, x, z, ry, seed, sex }) {
     R = mulberry32(seed >>> 0); const a = newAgent(kind, sex); a.game = true; a.x = x; a.y = 0; a.z = z; a.ry = ry; a.scale = clamp(a.scale, 0.93, 1.0);
     a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
-    if (SIT_KINDS.has(kind)) a.y = SEAT;   // sitting on a bucket/crate on the ground
+    if (SIT_KINDS.has(kind)) a.y = FLOOR;   // sitting on the ground
     GAME_AGENTS.push(a); return a;
   }
   function removeGameWalker(a) { const i = GAME_AGENTS.indexOf(a); if (i >= 0) GAME_AGENTS.splice(i, 1); if (a.rig) releaseRig(a.rig); }
@@ -561,12 +559,10 @@ export async function createCharacters(ctx) {
   function setupProp(a) { const p = a.prop, lie = a.kind === 'lie', perf = a.kind === 'perform', sit = SIT_KINDS.has(a.kind), h = a.st.seed >>> 3;
     p.towel.visible = lie; p.speaker.visible = perf && a.st.act === 'dance'; p.hat.visible = perf;
     p.towel.material = towelMats[h % towelMats.length];
-    const bucket = sit && (a.kind === 'drum' ? h % 3 !== 0 : h % 3 === 0); p.bucket.visible = sit && bucket; p.crate.visible = sit && !bucket;
-    p.crate.material = p.bucket.material = seatMats[h % seatMats.length];
-    p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.5);
+    p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.52);
     p.cup.visible = a.kind === 'beg'; p.sign.visible = a.kind === 'beg'; p.sign.material = signMats[h % signMats.length]; p.sign.position.set(-0.42, 0, 0.3); p.sign.rotation.set(-0.25, 0.35, 0);
     p.cig.visible = a.kind === 'smoke';
-    p.g.position.set(a.x, sit ? a.y - SEAT : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
+    p.g.position.set(a.x, sit ? a.y - FLOOR : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
     p.speaker.position.set(0.9, 0, -0.3); p.hat.position.set(0.1, 0, 0.75); p.towel.position.set(0, 0, 0); }
   function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick; a.key = a.game ? a.dist - 1e4 : a.dist;
     a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < Q.rRig) cands.push(a); }
@@ -620,11 +616,24 @@ export async function createCharacters(ctx) {
   function sitArms(a, r, t) {
     const B = r.bones, P = a.prop; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q);
     _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);   // character forward / right
-    const g0 = a.y - SEAT;
+    const g0 = a.y - FLOOR, fh = calib[r.sex].footH * 0.8;
+    // legs on the ground: drummers (and half the beggars) cross-legged, everyone else knees up with feet flat
+    const cross = a.kind === 'drum' || (a.kind === 'beg' && a.phase < 0.5);
+    B.pelvis.getWorldPosition(_hp);
+    for (const side of [1, -1]) {   // +1 = left leg
+      const L = side > 0;
+      if (cross) { _t.copy(_hp).addScaledVector(_f, 0.3).addScaledVector(_r, side * 0.12); _p.copy(_r).multiplyScalar(-side).addScaledVector(_UP, 0.35).addScaledVector(_f, 0.4); }
+      else { _t.copy(_hp).addScaledVector(_f, 0.5).addScaledVector(_r, -side * 0.17); _p.copy(_UP).addScaledVector(_f, 0.6).addScaledVector(_r, -side * 0.25); }
+      _t.y = g0 + fh;
+      ik2(L ? B.thigh_l : B.thigh_r, L ? B.calf_l : B.calf_r, L ? B.foot_l : B.foot_r, _t, _p);
+    }
+    // the free hand rests on its knee (both hands drum for drummers)
+    if (a.kind !== 'drum') { B.calf_l.getWorldPosition(_t); _t.addScaledVector(_UP, 0.06).addScaledVector(_f, -0.04); _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, -0.5);
+      ik2(B.upperarm_l, B.lowerarm_l, B.hand_l, _t, _p, 0.85); }
     if (a.kind === 'drum') {
       for (const side of [1, -1]) {   // +1 = left hand; hands alternate, each beat is a quick drop onto the head
         const beat = Math.max(0, Math.sin(t * (8 + a.phase * 2) + a.phase * 6.28 + (side > 0 ? 0 : Math.PI)));
-        _t.set(a.x, g0 + 0.64 + beat * 0.15, a.z).addScaledVector(_f, 0.48).addScaledVector(_r, -side * 0.08);
+        _t.set(a.x, g0 + 0.5 + beat * 0.13, a.z).addScaledVector(_f, 0.52).addScaledVector(_r, -side * 0.07);
         _p.copy(_r).multiplyScalar(-side * 0.8).addScaledVector(_UP, -0.5);
         const L = side > 0; ik2(L ? B.upperarm_l : B.upperarm_r, L ? B.lowerarm_l : B.lowerarm_r, L ? B.hand_l : B.hand_r, _t, _p);
       }
@@ -638,7 +647,7 @@ export async function createCharacters(ctx) {
       if (a.puffC !== undefined && a.puffC < 3.1 && c >= 3.1) puff(_h.x + _f.x * 0.15, _h.y - 0.04, _h.z + _f.z * 0.15);   // exhale after the drag
       a.puffC = c;
     } else if (a.kind === 'beg') {
-      B.upperarm_r.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_f, 0.4).addScaledVector(_UP, -0.24 + Math.sin(t * 1.3 + a.phase * 6) * 0.03).addScaledVector(_r, 0.06);
+      B.upperarm_r.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_f, 0.42).addScaledVector(_UP, -0.26 + Math.sin(t * 1.3 + a.phase * 6) * 0.03).addScaledVector(_r, 0.3);   // cup held out beside the knees
       _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, 0.4); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, 0.9);
       if (P) handTo(P.cup, P, B.hand_r, 0.03, 0.02);
     }
@@ -648,7 +657,7 @@ export async function createCharacters(ctx) {
     for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
   function puff(x, y, z) { const m = PUFFS.find((p) => p.userData.t > 2.4); if (!m) return; m.userData.t = 0; m.position.set(x, y, z); m.visible = true; }
   function updatePuffs(dt) { for (const m of PUFFS) if (m.visible) { const u = m.userData; u.t += dt; m.position.y += dt * 0.22; m.position.x += dt * 0.06;
-    m.scale.setScalar(1 + u.t * 2.4); m.material.opacity = 0.3 * (1 - u.t / 2.4); if (u.t > 2.4) m.visible = false; } }
+    m.scale.setScalar(1 + u.t * 1.3); m.material.opacity = 0.2 * (1 - u.t / 2.4); if (u.t > 2.4) m.visible = false; } }
   function lieArms(r) { const B = r.bones; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q); _f.set(0, 0, 1).applyQuaternion(_q); _r.set(1, 0, 0).applyQuaternion(_q);
     rotWorld(B.upperarm_l, _f, -1.25); rotWorld(B.upperarm_r, _f, 1.25); rotWorld(B.lowerarm_l, _f, 0.15); rotWorld(B.lowerarm_r, _f, -0.15);
     rotWorld(B.thigh_l, _r, -0.25); rotWorld(B.calf_l, _r, 0.45); }

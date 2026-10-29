@@ -111,7 +111,7 @@ export function createGame(ctx) {
       if (o.ped) o.ped.z = o.az; else { o.mesh = getMesh('ped'); o.meshType = 'ped'; }
     } else if (type === 'selfie' || SITTERS.has(type)) {
       if (!chars) { o.mesh = getMesh('ped'); o.meshType = 'ped'; }
-      else if (type === 'drums') {   // three drummers on buckets in a little circle that fills the lane
+      else if (type === 'drums') {   // three drummers sitting on the ground in a little circle that fills the lane
         o.peds = []; const a0 = rand(0, 6.28);
         for (let k = 0; k < 3; k++) { const ang = a0 + k * Math.PI * 2 / 3, x = o.x + Math.sin(ang) * 0.88, zz = z + Math.cos(ang) * 0.88;
           o.peds.push(chars.addGameStation({ kind: 'drum', x, z: zz, ry: Math.atan2(o.x - x, z - zz), seed: seed + k })); } }

@@ -50,7 +50,7 @@ Skate as far as you can. Speed starts at 27 km/h and climbs to 58 km/h.
 - **People in the lanes:** walkers (some with a dog out front on a lead), cyclists and skaters riding with you or
   toward you, and influencers stopped for a selfie. You can't jump any of them, so change lane. Now and then a
   cyclist or skater also **rides across** the boardwalk.
-- **People sitting on buckets and crates:** someone asking for change, someone smoking, and drum circles. They sit
+- **People sitting on the ground:** someone asking for change, someone smoking, and drum circles. They sit
   just off the lanes and in the outer two lanes. You can't jump the ones in a lane.
 - **Knocked-over trash cans** and **cone groups** can be jumped, but they need a fairly well-charged ollie.
 - **Pizza** and **dog poop** make you slip: you keep your health but lose speed and your combo. Jump them, or hit
@@ -161,8 +161,9 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   softened so the 'superhero' muscles read as an everyday build, the eyebrow cards are dropped, and the outfit adds
   white crew socks and white soles. `skaterDecimate` (0.55) sets how much is removed.
 - **Seated people:** beggars hold out a cup next to a cardboard sign, smokers raise a cigarette to their mouth
-  every few seconds and exhale a puff, and drummers beat djembes (arms driven by IK). Each sits on a bucket or milk
-  crate (`SIT_KINDS` in characters.js). Off-lane ones come from each chunk's layout and are kept even when
+  every few seconds and exhale a puff, and drummers beat djembes (arms driven by IK). They sit on the ground: there's no
+  floor-sitting clip, so the seated clip's upper body is kept, the pelvis is lowered to the ground, and the legs are
+  posed by IK, cross-legged (drummers, some beggars) or knees up with feet flat (`SIT_KINDS` in characters.js). Off-lane ones come from each chunk's layout and are kept even when
   `crowd.sideWalkers` thins the rest of the side crowd.
 - **People:** all people obstacles use the rigged crowd and get a rig before anyone else. Walkers and riders moving
   along a lane are placed so they reach their row exactly when you do. Same-way riders are always slower than you,

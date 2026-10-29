@@ -141,9 +141,9 @@ const GAME = {
     bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null },   // cyclist riding along a lane
     skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null },   // skater cruising along a lane
     selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer standing still, phone up
-    beg:        { kind: 'solid', w: 1.0, h: 1.3, d: 1.0, clear: null },   // sitting on a crate asking for change (outer lanes only)
-    smoke:      { kind: 'solid', w: 1.0, h: 1.3, d: 1.0, clear: null },   // sitting on a crate, smoking (outer lanes only)
-    drums:      { kind: 'solid', w: 2.3, h: 1.3, d: 2.3, clear: null },   // three drummers in a circle filling the lane (outer lanes only)
+    beg:        { kind: 'solid', w: 1.0, h: 1.0, d: 1.1, clear: null },   // sitting on the ground asking for change (outer lanes only)
+    smoke:      { kind: 'solid', w: 1.0, h: 1.0, d: 1.1, clear: null },   // sitting on the ground, smoking (outer lanes only)
+    drums:      { kind: 'solid', w: 2.3, h: 1.0, d: 2.3, clear: null },   // three drummers in a circle filling the lane (outer lanes only)
     can:        { kind: 'solid', w: 1.0, h: 0.66, d: 0.7, clear: 0.5 },
     cones:      { kind: 'solid', w: 1.35, h: 0.72, d: 0.9, clear: 0.55 },
     pizza:      { kind: 'slip', w: 0.9, h: 0.05, d: 1.0, clear: 0.12 },
@@ -1406,9 +1406,9 @@ class Chunk {
       for (let k = 0; k < randi(2, 4); k++) { const ang = ry + rand(-0.8, 0.8), d = rand(1.9, 2.7), sx = px + Math.sin(ang) * d, sz = pz + Math.cos(ang) * d;
         this.stations.push({ t: 'watch', x: sx, y: 0, z: sz, ry: Math.atan2(px - sx, pz - sz), seed: sid + 211 + k, minCrowd: 0.5 }); } }
     if (chance(0.6)) this.stations.push({ t: 'selfie', x: chance(0.5) ? rand(-7.2, -5.0) : rand(5.0, 8.4), y: 0, z: z0 - rand(4, 36), ry: rand(-0.6, 0.6) + (chance(0.5) ? 0 : Math.PI), seed: sid + 301, minCrowd: 0.3 });
-    // seated regulars just off the lanes, facing the walk: someone asking for change, a smoker, and now and then a drum circle.
+    // regulars sitting on the ground just off the lanes, facing the walk: someone asking for change, a smoker, and now and then a drum circle.
     // (always: they are kept even when crowd.sideWalkers thins the rest of the side crowd)
-    const SEAT_Y = 0.4, sideX = () => chance(0.5) ? -rand(4.9, 5.5) : rand(5.0, 5.8), face = (x) => (x < 0 ? Math.PI / 2 : -Math.PI / 2);
+    const SEAT_Y = 0.03, sideX = () => chance(0.5) ? -rand(4.9, 5.5) : rand(5.0, 5.8), face = (x) => (x < 0 ? Math.PI / 2 : -Math.PI / 2);
     if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'beg', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x), seed: sid + 401, minCrowd: 0.05, always: true }); }
     if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'smoke', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x) + rand(-0.4, 0.4), seed: sid + 411, minCrowd: 0.05, always: true }); }
     if (this.index % 3 === 1) { const right = chance(0.5), cx = right ? 6.9 : -10.6, cy = right ? 0 : -0.065, cz = z0 - rand(8, 32), n = randi(4, 6), a0 = rand(0, 6.28);

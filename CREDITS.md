@@ -44,7 +44,7 @@ offline only, to measure stride speeds.
 bikes are a procedural placeholder in `characters.js`. Clothing, the skateboard, the phone, towels, the speaker,
 the tip hat and the dog leads are procedural too. The phase 2 obstacles are procedural or reuse the scene's own
 props: knocked-over trash cans and cone groups reuse the scenery meshes, and the pizza box, slices, grease streak and
-dog poop are built in `game.js`. The flying pigeons and seagulls, the crossing skaters' boards, and the buckets, crates, djembes, cups, cardboard
+dog poop are built in `game.js`. The flying pigeons and seagulls, the crossing skaters' boards, and the djembes, cups, cardboard
 signs, cigarettes and smoke puffs are procedural too. No new asset files were added in phase 2.
 
 ## Procedural (canvas-generated, original)
