@@ -74,12 +74,10 @@ function weaveTexture() {
 }
 export const outfitMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, side: THREE.DoubleSide, normalMap: weaveTexture(), normalScale: new THREE.Vector2(0.35, 0.35) });
 
-// -------------------------------------------------------------------------------------
-// Per body: welded adjacency (for smoothing) and bind-space reference points for the rigid parts
-// -------------------------------------------------------------------------------------
-export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
+// weld vertices that share a position (UV seams) into groups, with averaged normals and neighbour lists,
+// so smoothing treats the surface as one piece
+function weld(geo) {
   const pos = geo.attributes.position, nor = geo.attributes.normal, idx = geo.index.array, nV = pos.count;
-  // weld vertices that share a position (UV seams), so smoothing treats the surface as one piece
   const group = new Int32Array(nV), keyMap = new Map(); let nG = 0;
   for (let i = 0; i < nV; i++) { const k = `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`; let g = keyMap.get(k); if (g === undefined) { g = nG++; keyMap.set(k, g); } group[i] = g; }
   const gp = new Float32Array(nG * 3), gn = new Float32Array(nG * 3), gc = new Float32Array(nG);
@@ -87,7 +85,52 @@ export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
   for (let g = 0; g < nG; g++) { const l = Math.hypot(gn[g * 3], gn[g * 3 + 1], gn[g * 3 + 2]) || 1; gn[g * 3] /= l; gn[g * 3 + 1] /= l; gn[g * 3 + 2] /= l; }
   const nbr = Array.from({ length: nG }, () => new Set());
   for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) { const a = group[idx[t + e]], b = group[idx[t + (e + 1) % 3]]; if (a !== b) { nbr[a].add(b); nbr[b].add(a); } }
-  const nbrA = nbr.map((s) => Int32Array.from(s));
+  return { group, nG, gp, gn, nbrA: nbr.map((s) => Int32Array.from(s)) };
+}
+
+// -------------------------------------------------------------------------------------
+// Derived builds. The free bodies are 'Superhero' sculpts; everyday builds come from reshaping them in bind
+// pose: Taubin smoothing (no shrinkage) softens the muscle definition on the torso and limbs (head, hands
+// and feet untouched), the upper torso narrows a little, and 'fuller' adds a soft belly and hips. The vertex
+// count, UVs and skin weights are unchanged, so every animation still fits.
+// -------------------------------------------------------------------------------------
+const BUILDS = {
+  everyday: { iters: 10, narrow: 0.05, offset: -0.002, belly: 0, hips: 0 },
+  slim:     { iters: 10, narrow: 0.08, offset: -0.007, belly: 0, hips: 0 },
+  fuller:   { iters: 10, narrow: 0.02, offset: 0.004, belly: 0.04, hips: 0.016 },
+};
+export function deriveBody(geo, lm, kind) {
+  const P = BUILDS[kind], W = weld(geo), { group, nG, gp, gn, nbrA } = W, [l0, l1, l2] = lm;
+  const w = new Float32Array(nG), q = Float32Array.from(gp);
+  for (let g = 0; g < nG; g++) { const x = gp[g * 3], y = gp[g * 3 + 1];
+    w[g] = (1 - smoothstep(l1.y - 0.04, l1.y + 0.02, y)) * (1 - smoothstep(l2.x - 0.09, l2.x - 0.04, Math.abs(x))) * smoothstep(l0.x + 0.03, l0.x + 0.1, y); }
+  const tmp = new Float32Array(nG * 3);
+  const pass = (f) => { for (let g = 0; g < nG; g++) { let sx = 0, sy = 0, sz = 0; const nb = nbrA[g]; for (const o of nb) { sx += q[o * 3]; sy += q[o * 3 + 1]; sz += q[o * 3 + 2]; }
+      const n = nb.length || 1, k = f * w[g]; tmp[g * 3] = q[g * 3] + (sx / n - q[g * 3]) * k; tmp[g * 3 + 1] = q[g * 3 + 1] + (sy / n - q[g * 3 + 1]) * k; tmp[g * 3 + 2] = q[g * 3 + 2] + (sz / n - q[g * 3 + 2]) * k; } q.set(tmp); };
+  for (let i = 0; i < P.iters; i++) { pass(0.5); pass(-0.53); }
+  for (let g = 0; g < nG; g++) { const x = q[g * 3], y = q[g * 3 + 1], z = q[g * 3 + 2], ax = Math.abs(gp[g * 3]);
+    // narrower upper torso (not the arms), fading out toward the waist
+    const torso = (1 - smoothstep(l1.z * 0.8, l1.z * 1.0, ax)) * smoothstep(l0.w, l1.x, y) * (1 - smoothstep(l1.y - 0.02, l1.y + 0.03, y));
+    q[g * 3] = x * (1 - P.narrow * torso);
+    let off = P.offset * w[g];
+    if (P.belly && gn[g * 3 + 2] > 0) off += P.belly * Math.exp(-(((y - (l0.w + (l1.x - l0.w) * 0.3)) / 0.11) ** 2) - (x / 0.16) ** 2) * gn[g * 3 + 2];
+    if (P.hips) off += P.hips * Math.exp(-(((y - l0.z) / 0.1) ** 2)) * (ax < l1.z * 0.9 ? 1 : 0);
+    for (let c = 0; c < 3; c++) q[g * 3 + c] += gn[g * 3 + c] * off; }
+  // write back to every vertex and recompute smooth normals over the welded surface
+  const out = geo.clone(), pos = out.attributes.position, idx = out.index.array, fn = new Float32Array(nG * 3), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) { const g = group[i]; pos.setXYZ(i, q[g * 3], q[g * 3 + 1], q[g * 3 + 2]); }
+  for (let t = 0; t < idx.length; t += 3) { const g0 = group[idx[t]], g1 = group[idx[t + 1]], g2 = group[idx[t + 2]];
+    a.fromArray(q, g0 * 3); b.fromArray(q, g1 * 3).sub(a); c.fromArray(q, g2 * 3).sub(a); b.cross(c); for (const g of [g0, g1, g2]) { fn[g * 3] += b.x; fn[g * 3 + 1] += b.y; fn[g * 3 + 2] += b.z; } }
+  const nor = out.attributes.normal; for (let i = 0; i < pos.count; i++) { const g = group[i]; a.fromArray(fn, g * 3).normalize(); nor.setXYZ(i, a.x, a.y, a.z); }
+  pos.needsUpdate = true; nor.needsUpdate = true; out.computeBoundingSphere(); return out;
+}
+
+// -------------------------------------------------------------------------------------
+// Per body: welded adjacency (for smoothing) and bind-space reference points for the rigid parts
+// -------------------------------------------------------------------------------------
+export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
+  const pos = geo.attributes.position, idx = geo.index.array, nV = pos.count;
+  const { group, nG, gp, gn, nbrA } = weld(geo);
   // bind-space body extents used to place hoods, caps and bags
   let headTop = -1e9, backZ = 0; for (let i = 0; i < nV; i++) { const y = pos.getY(i); if (y > headTop) headTop = y; if (Math.abs(pos.getX(i)) < 0.1 && Math.abs(y - lm[1].x) < 0.06) backZ = Math.min(backZ, pos.getZ(i)); }
 
@@ -151,8 +194,9 @@ export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
       const brim = new THREE.CylinderGeometry(0.085, 0.085, 0.008, 16, 1, false, -Math.PI / 2, Math.PI); brim.scale(1, 1, 1.25); brim.rotateX(0.12); brim.translate(0, headTop - 0.072, head.z + 0.075);   // a peak that sticks out in front
       return rigid(mergeGeometries([top.toNonIndexed(), brim.toNonIndexed()].map((g) => { g.deleteAttribute('uv'); return g; })), 'Head', color); },
     sunglasses() { const ey = eyesBox ? (eyesBox.min.y + eyesBox.max.y) / 2 : head.y + 0.07, ez = eyesBox ? eyesBox.max.z + 0.012 : head.z + 0.1, parts = [];
-      for (const s of [-1, 1]) { parts.push(new THREE.BoxGeometry(0.048, 0.03, 0.006).translate(s * 0.034, ey, ez), new THREE.BoxGeometry(0.006, 0.008, 0.1).translate(s * 0.064, ey + 0.008, ez - 0.05)); }
-      parts.push(new THREE.BoxGeometry(0.022, 0.006, 0.006).translate(0, ey + 0.008, ez));
+      for (const s of [-1, 1]) { parts.push(new THREE.CylinderGeometry(0.019, 0.019, 0.004, 14).rotateX(Math.PI / 2).scale(1.2, 0.85, 1).translate(s * 0.032, ey, ez),   // oval lenses
+        new THREE.BoxGeometry(0.004, 0.005, 0.095).translate(s * 0.058, ey + 0.006, ez - 0.048)); }                                                           // arms back to the ears
+      parts.push(new THREE.BoxGeometry(0.018, 0.004, 0.004).translate(0, ey + 0.006, ez));
       return rigid(mergeGeometries(parts.map((g) => g.toNonIndexed())), 'Head', '#151515'); },
     backpack(color) { const g = new THREE.BoxGeometry(0.28, 0.36, 0.13, 2, 2, 1); g.translate(0, l1.x - 0.06, backZ - 0.09); return rigid(g, 'spine_03', color); },
     pouch(color) { const g = new THREE.BoxGeometry(0.2, 0.15, 0.06); g.translate(0.08, l0.w + 0.02, 0.15); return rigid(g, 'pelvis', color); },
@@ -164,9 +208,10 @@ export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
   function build(r) {
     const st = [r.top, r.bottom, r.shoes], L = lm, parts = [];
     const speck = (x, y, z) => 0.92 + 0.16 * ((Math.sin(x * 917.1 + y * 311.7 + z * 543.3) * 43758.5453) % 1 + 1) % 1;
-    if (r.top) parts.push(shell((x, y, z) => topMask(x, y, z, st, L, -0.012), r.top === 4 ? 0.028 : r.top === 3 ? 0.016 : 0.013, r.top === 4 ? 14 : 10, (x, y, z, c) => {
+    // layering: tops always sit further out than bottoms, so a shirt hem lies over the waistband instead of z-fighting with it
+    if (r.top) parts.push(shell((x, y, z) => topMask(x, y, z, st, L, -0.012), r.top === 4 ? 0.03 : r.top === 3 ? 0.019 : 0.016, r.top === 4 ? 14 : 10, (x, y, z, c) => {
       c.set(r.topCol); if (r.trimCol && topMask(x, y, z, st, L, 0.02) < 0.5) c.set(r.trimCol); }));
-    if (r.bottom && r.bottom < 4) parts.push(shell((x, y, z) => botMask(x, y, z, st, L, -0.012), r.bottom === 3 ? 0.012 : 0.016, 8, (x, y, z, c) => { c.set(r.botCol); if (r.denim) c.multiplyScalar(speck(x, y, z)); }));
+    if (r.bottom && r.bottom < 4) parts.push(shell((x, y, z) => botMask(x, y, z, st, L, -0.012), r.bottom === 3 ? 0.008 : 0.01, 8, (x, y, z, c) => { c.set(r.botCol); if (r.denim) c.multiplyScalar(speck(x, y, z)); }));
     if (r.shoes === 2) parts.push(shell((x, y, z) => shoeMask(x, y, z, st, L, -0.012), 0.018, 4, (x, y, z, c) => { c.set(y < 0.028 ? (r.soleCol || '#f2f0ea') : r.shoeCol); }));
     if (r.top === 4) parts.push(PARTS.hood(r.topCol));
     if (r.skirt) parts.push(PARTS.skirt(r.skirt.col, r.skirt.flare));

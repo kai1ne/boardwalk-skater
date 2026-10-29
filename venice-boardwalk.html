@@ -1772,8 +1772,9 @@ function setLineup(on) {
 }
 function aimLineup() {
   camMode = 'ref';
-  if (!LINE.close) Object.assign(REF_POSE, { x: 0, y: 1.45, z: LINE.cz + 8.6, yaw: 0, pitch: -4, fov: 62 });
-  else { const p = LINE.spots[LINE.close - 1]; Object.assign(REF_POSE, { x: p.x, y: 1.5, z: p.z + 2.0, yaw: 0, pitch: -3, fov: 38 }); }
+  // the lineup faces the sun (-z), so faces are lit; the camera stands on that side looking back at them
+  if (!LINE.close) Object.assign(REF_POSE, { x: 0, y: 1.45, z: LINE.cz - 8.6, yaw: 180, pitch: -4, fov: 62 });
+  else { const p = LINE.spots[LINE.close - 1]; Object.assign(REF_POSE, { x: p.x, y: 1.5, z: p.z - 2.0, yaw: 180, pitch: -3, fov: 38 }); }
 }
 // Adaptive resolution: pixel ratio floats between 1 and min(devicePixelRatio, 2) to hold ~60 fps.
 let renderScale = Math.min(window.devicePixelRatio, Q.pixelRatioMax, Q.startPixelRatio);

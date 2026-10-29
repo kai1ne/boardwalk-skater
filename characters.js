@@ -14,7 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
-import { createOutfitBuilder, MASK_GLSL, outfitMaterial } from './outfits.js';
+import { createOutfitBuilder, deriveBody, MASK_GLSL, outfitMaterial } from './outfits.js';
 
 const BASE = 'assets/characters/';
 const V3 = THREE.Vector3, QT = THREE.Quaternion;
@@ -81,38 +81,67 @@ function skinAverage(tex) {
   const col = n ? new THREE.Color().setRGB(r / n / 255, g / n / 255, b / n / 255, THREE.SRGBColorSpace) : new THREE.Color(0.6, 0.45, 0.35); SKIN_AVG.set(tex.uuid, col); return col;
 }
 function bodyMaterial(proto, lm, app) {
+  // tint = target tone / the texture's average skin colour (linear), so the average lands exactly on the MST colour
+  const avg = skinAverage(app.skinTex), target = skinAlbedo(app.mst);
+  const tint = new THREE.Color(target.r / Math.max(avg.r, 1e-3), target.g / Math.max(avg.g, 1e-3), target.b / Math.max(avg.b, 1e-3));
   // the base mesh's underwear areas: swimwear when the recipe says so, otherwise skin (they show at necklines and hems)
-  const under = app.swim ? new THREE.Color(app.underCol) : skinAverage(app.skinTex).clone().multiply(new THREE.Color().setRGB(...app.skinTint)).multiplyScalar(1.15);
+  const under = app.swim ? new THREE.Color(app.underCol) : target.clone();
   const m = new THREE.MeshStandardMaterial({ map: app.skinTex, normalMap: proto.normalMap, roughnessMap: proto.roughnessMap, roughness: 1, metalness: 0 });
   const u = {
     uLm0: { value: lm[0] }, uLm1: { value: lm[1] }, uLm2: { value: lm[2] },
     uStyle: { value: new THREE.Vector4(app.top, app.bottom, app.shoes, 0) },
-    uSkin: { value: new THREE.Color().setRGB(...app.skinTint) }, uShoe: { value: new THREE.Color(app.shoeCol) }, uUnder: { value: under },
+    uSkin: { value: tint }, uSkinTarget: { value: target }, uAvgLum: { value: 0.2126 * avg.r + 0.7152 * avg.g + 0.0722 * avg.b }, uShoe: { value: new THREE.Color(app.shoeCol) }, uUnder: { value: under },
     uSocks: { value: app.socks ? 1 : 0 },
   };
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, u);
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvBindPos = position;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>\n${MASK_GLSL}\nvarying vec3 vBindPos;\nuniform vec3 uSkin, uShoe, uUnder; uniform float uSocks;`)
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>\n${MASK_GLSL}\nvarying vec3 vBindPos;\nuniform vec3 uSkin, uShoe, uUnder, uSkinTarget; uniform float uSocks, uAvgLum;`)
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (coveredByOutfit(vBindPos) > 0.5) discard;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         { vec3 base = diffuseColor.rgb; float mx = max(base.r, max(base.g, base.b)), mn = min(base.r, min(base.g, base.b));
           float under = 1.0 - smoothstep(0.12, 0.24, (mx - mn) / max(mx, 1e-3));   // underwear areas are the grey ones
           float lum = dot(base, vec3(0.3, 0.59, 0.11)), ushade = clamp(mix(1.0, lum / 0.38, 0.6), 0.55, 1.15);
-          vec3 col = mix(base * uSkin, uUnder * ushade, under);
+          // skin = the target tone × the texture's brightness, with 30% of the tinted texture colour kept for lips and cheeks
+          vec3 skin = mix(uSkinTarget * (dot(base, vec3(0.2126, 0.7152, 0.0722)) / max(uAvgLum, 1e-3)), base * uSkin, 0.3);
+          vec3 col = mix(skin, uUnder * ushade, under);
           if (uStyle.z > 0.5 && uStyle.z < 1.5) col = mix(col, uShoe * 0.9, 1.0 - csm(0.02, vBindPos.y));   // sandal soles
           if (uSocks > 0.5) col = mix(col, vec3(0.9, 0.9, 0.88), csm(uLm0.x + 0.02, vBindPos.y) * (1.0 - csm(uLm0.x + 0.12, vBindPos.y)));
           diffuseColor.rgb = col; }`);
   };
-  m.customProgramCacheKey = () => 'vbCharBody3';
+  m.customProgramCacheKey = () => 'vbCharBody4';
   return m;
 }
 
 // -------------------------------------------------------------------------------------
 // Appearance tables
 // -------------------------------------------------------------------------------------
-const SKIN_TONES = [   // multiplier on the base skin texture (Light texture for the first three, Dark for the rest)
-  [1.08, 1.02, 0.98], [0.98, 0.9, 0.84], [0.88, 0.74, 0.62], [0.72, 0.56, 0.45], [0.54, 0.4, 0.32], [0.38, 0.27, 0.21]];
+// Skin: the Monk Skin Tone Scale (Dr. Ellis Monk with Google, CC BY 4.0, skintone.google), MST-1 … MST-10.
+// Each body's skin texture is tinted so its average skin colour lands on the chosen tone (the texture keeps the
+// detail: lips, shading, freckles). MST-1…5 use the base's Light texture, MST-6…10 its Dark one.
+const MST = ['#f6ede4', '#f3e7db', '#f7ead0', '#eadaba', '#d7bd96', '#a07e56', '#825c43', '#604134', '#3a312a', '#292420'];
+// The swatches are display colours (MST-1 is near-white, MST-10 near-black); as surface albedo that reads as grey
+// mannequins and flat black. Keep their order and hue, map their luminance onto a realistic skin-albedo range on a
+// log curve (so the ten steps stay evenly spaced), and restore some saturation.
+const _mstL = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+const MST_LUM = MST.map((h) => _mstL(new THREE.Color(h))), MST_LMAX = Math.max(...MST_LUM), MST_LMIN = Math.min(...MST_LUM);
+function skinAlbedo(i, outMin = 0.065, outMax = 0.56, chroma = 0.58) {
+  const c = new THREE.Color(MST[i]), L = MST_LUM[i], t = Math.log(L / MST_LMIN) / Math.log(MST_LMAX / MST_LMIN), L2 = outMin * Math.pow(outMax / outMin, t);
+  // per-tone saturation so every tone reaches a natural skin chroma (the light swatches are nearly grey)
+  const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), sat = Math.min(4, Math.max(1, chroma / Math.max((mx - mn) / mx, 1e-3)));
+  for (const k of ['r', 'g', 'b']) c[k] = Math.max(0, L + (c[k] - L) * sat); return c.multiplyScalar(L2 / L);
+}
+const MST_WEIGHTS = [[0, 1], [1, 1], [2, 1], [3, 1.1], [4, 1.1], [5, 1.1], [6, 1.05], [7, 1], [8, 0.95], [9, 0.85]];
+// natural hair colours (any skin tone can have any of them; very dark tones lean toward the darker ones)
+const HAIR_PALETTE = { black: '#0f0d0c', darkBrown: '#2b1d15', brown: '#4b3221', lightBrown: '#7a5537', darkBlond: '#9c7a4c', blond: '#cfae74',
+  platinum: '#e3d4b0', auburn: '#6e2d18', ginger: '#a4471f', saltPepper: '#5c5a58', gray: '#8f8f8f', white: '#d6d6d2' };
+function hairColour(mst) {
+  const dark = mst >= 6;
+  const k = wpick(dark ? [['black', 0.36], ['darkBrown', 0.3], ['brown', 0.1], ['saltPepper', 0.08], ['gray', 0.07], ['white', 0.03], ['auburn', 0.03], ['darkBlond', 0.03]]
+    : [['black', 0.1], ['darkBrown', 0.17], ['brown', 0.17], ['lightBrown', 0.12], ['darkBlond', 0.1], ['blond', 0.09], ['platinum', 0.03], ['auburn', 0.05], ['ginger', 0.05], ['saltPepper', 0.05], ['gray', 0.05], ['white', 0.02]]);
+  return HAIR_PALETTE[k];
+}
+const EYES = { darkBrown: '#2a170d', brown: '#5a3418', hazel: '#7a6230', green: '#4f7a3a', blue: '#4a78b8', gray: '#7f8a94' };
 const TOPS = ['#e8322b', '#f4f4f2', '#141414', '#2a6fc9', '#f2cf4a', '#24a865', '#ef8a2a', '#e45a9a', '#6a45c0', '#8f969c', '#efe4cf', '#123c66', '#7fc6d8', '#b52f45', '#3d5a40', '#f2b8c6', '#ffffff', '#c9d6a3'];
 const HOODIES = ['#2b2b2e', '#6d7278', '#1f3a5f', '#7a1f2b', '#3d5a40', '#c9b48f', '#e9e4da'];
 const DRESSES = ['#e45a9a', '#f2cf4a', '#7fc6d8', '#f4f4f2', '#e8322b', '#24a865', '#6a45c0', '#f08a5d', '#2a6fc9'];
@@ -123,25 +152,27 @@ const SWIM = ['#e8322b', '#1d1d1d', '#2a7de1', '#f05aa0', '#ffd23f', '#1fb5a8', 
 const SHOES = ['#f2f2f2', '#1a1a1a', '#c23030', '#2a4f8f', '#7a6a58', '#d9d2c3', '#3d5a40'];
 const CAPS = ['#1b1b1b', '#f4f4f2', '#2a6fc9', '#c8102e', '#3d5a40', '#c9b48f'];
 const BAGS = ['#2b2b2e', '#c9b48f', '#1f3a5f', '#e45a9a', '#24a865', '#7a1f2b', '#f2cf4a'];
-const HAIR_COLS = ['#141110', '#2a1c14', '#4a3020', '#6e4a2e', '#c8a46a', '#8a3a1e', '#9a9a9a', '#d8c08a'];
 const HAIR_STYLES = { M: [['Hair_Buzzed', 0.35], ['Hair_SimpleParted', 0.35], ['Hair_Long', 0.12], [null, 0.1], ['Hair_Buns', 0.03]],
   F: [['Hair_Long', 0.42], ['Hair_Buns', 0.24], ['Hair_SimpleParted', 0.16], ['Hair_BuzzedFemale', 0.18]] };
 // a seeded wardrobe recipe: top / bottom / shoes styles and colours, accessories (codes in outfits.js)
 function makeAppearance(sex, i) {
   R = mulberry32(9001 + i * 131 + (sex === 'F' ? 7 : 0));
-  const tone = randi(0, 5), swim = chance(0.07);
-  const a = { sex, tone, swim, skinTint: SKIN_TONES[tone], underCol: swim ? pick(SWIM) : '#2a2a2e', shoeCol: pick(SHOES), hairCol: pick(HAIR_COLS.slice(0, tone > 3 ? 3 : 8)) };
-  if (swim) { a.top = 0; a.bottom = 0; a.shoes = chance(0.6) ? 1 : 0; if (sex === 'M') { a.bottom = 1; a.botCol = pick(SWIM); } }
+  const mst = wpick(MST_WEIGHTS), swim = chance(0.07);
+  const a = { sex, mst, tone: mst < 5 ? 0 : 5, swim, underCol: swim ? pick(SWIM) : '#2a2a2e', shoeCol: pick(SHOES), hairCol: hairColour(mst),
+    eyeCol: EYES[wpick(mst >= 6 ? [['darkBrown', 0.6], ['brown', 0.3], ['hazel', 0.07], ['green', 0.03]] : [['darkBrown', 0.2], ['brown', 0.25], ['hazel', 0.18], ['green', 0.12], ['blue', 0.17], ['gray', 0.08]])] };
+  // swimwear kept modest: women in a swim tank over swim bottoms (tankini), men in board shorts
+  if (swim) { a.shoes = chance(0.6) ? 1 : 0; if (sex === 'M') { a.top = 0; a.bottom = 1; a.botCol = pick(SWIM); } else { a.top = 1; a.topCol = a.underCol; a.bottom = 0; } }
   else {
     a.top = sex === 'M' ? wpick([[2, 0.42], [3, 0.16], [4, 0.14], [1, 0.16], [0, 0.04]]) : wpick([[2, 0.3], [1, 0.2], [3, 0.12], [4, 0.12], [5, 0.26]]);
-    if (a.top === 0) { a.underCol = pick(SWIM); a.swim = true; }   // shirtless: board shorts
+    if (a.top === 0) { a.underCol = pick(SWIM); a.swim = true; a.bottom = 1; a.botCol = pick(SWIM); }   // shirtless: board shorts
     a.topCol = a.top === 4 ? pick(HOODIES) : a.top === 5 ? pick(DRESSES) : pick(TOPS);
     if (a.top === 5) { a.bottom = 4; a.skirt = { col: a.topCol, flare: rand(0.08, 0.16) }; }   // sundress: bodice + skirt (the body under the skirt is masked)
-    else { a.bottom = wpick([[1, 0.42], [2, 0.14], [3, 0.44]]); a.denim = a.bottom !== 1 && chance(0.7) || (a.bottom === 1 && chance(0.2));
+    else if (a.top !== 0) { a.bottom = wpick([[1, 0.42], [2, 0.14], [3, 0.44]]); a.denim = a.bottom !== 1 && chance(0.7) || (a.bottom === 1 && chance(0.2));
       a.botCol = a.denim ? pick(DENIM) : a.bottom === 1 ? pick(SHORTS) : pick(TROUSERS); }
     a.shoes = wpick([[2, 0.66], [1, 0.32], [0, 0.02]]);
   }
   a.hair = wpick(HAIR_STYLES[sex]); a.beard = sex === 'M' && chance(0.28);
+  a.build = wpick([['everyday', 0.42], ['slim', 0.25], ['fuller', 0.25], ['super', 0.08]]);   // the muscular sculpt in under 10%
   // accessories: caps only over close-cropped hair (or none), so the hair can't push through
   if (!swim && (a.hair === null || a.hair === 'Hair_Buzzed' || a.hair === 'Hair_BuzzedFemale') && chance(0.4)) a.cap = pick(CAPS);
   if (chance(0.3)) a.sunglasses = true;
@@ -222,18 +253,23 @@ export async function createCharacters(ctx) {
   // detail LOD: a reduced body mesh per sex (meshoptimizer; skin weights carried over). Rigs use the full mesh within
   // Q.lodNear metres and the reduced one beyond Q.lodFar (the gap is hysteresis, so nobody flickers between the two)
   const simplifier = new SimplifyModifier();
-  const outfitBuilders = (sex) => { const B = BODY[sex]; let body, eyes; B.g.scene.traverse((o) => { if (o.isSkinnedMesh) { if (/Eyes/.test(o.material.name)) eyes = o; else if (!/Hair/.test(o.material.name)) body = o; } });
+  // body variants per sex: the original 'super' sculpt plus everyday, slim and fuller builds derived from it
+  // (outfits.js). Each has a full and a reduced mesh and its own outfit builders (garments are cut from its surface)
+  const VARIANTS = ['super', 'everyday', 'slim', 'fuller'];
+  for (const sex of ['M', 'F']) { const B = BODY[sex]; let body, eyes; B.g.scene.traverse((o) => { if (o.isSkinnedMesh) { if (/Eyes/.test(o.material.name)) eyes = o; else if (!/Hair/.test(o.material.name)) body = o; } });
+    const base = body.geometry.clone(); for (const n of Object.keys(base.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(n)) base.deleteAttribute(n);
     const boneIndex = {}; body.skeleton.bones.forEach((b, i) => { boneIndex[b.name] = i; });
     const bonePos = {}; for (const n of ['Head', 'neck_01', 'spine_03', 'pelvis']) bonePos[n] = B.g.scene.getObjectByName(n).getWorldPosition(new V3());
     eyes.geometry.computeBoundingBox(); const ctx = { lm: B.lm, boneIndex, bonePos, eyesBox: eyes.geometry.boundingBox };
-    B.outfit = { full: createOutfitBuilder({ ...ctx, geo: B.geoFull }), low: createOutfitBuilder({ ...ctx, geo: B.geoLow }) }; };
-  for (const sex of ['M', 'F']) { let body; BODY[sex].g.scene.traverse((o) => { if (o.isSkinnedMesh && !/Eyes|Hair/.test(o.material.name)) body = o; });
-    const g0 = body.geometry; BODY[sex].geoFull = g0;
-    try { const c = g0.clone(); for (const n of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(n)) c.deleteAttribute(n);
-      const low = await simplifier.modify(c, Math.round(c.attributes.position.count * Q.lodReduce)); low.computeBoundingSphere(); BODY[sex].geoLow = low; c.dispose();
-      console.log('[characters] %s body LOD: %d → %d triangles', sex, g0.index.count / 3, low.index.count / 3);
-    } catch (err) { console.warn('[characters] body LOD failed, using the full mesh everywhere:', err); BODY[sex].geoLow = g0; }
-    outfitBuilders(sex); }
+    B.variants = {};
+    for (const kind of VARIANTS) {
+      const full = kind === 'super' ? base : deriveBody(base, B.lm, kind); let low = full;
+      try { low = await simplifier.modify(full.clone(), Math.round(full.attributes.position.count * Q.lodReduce)); low.computeBoundingSphere(); }
+      catch (err) { console.warn('[characters] body LOD failed, using the full mesh everywhere:', err); }
+      B.variants[kind] = { kind, geoFull: full, geoLow: low, outfit: { full: createOutfitBuilder({ ...ctx, geo: full }), low: createOutfitBuilder({ ...ctx, geo: low }) } };
+    }
+    B.geoFull = base; B.geoLow = B.variants.super.geoLow; B.outfit = B.variants.super.outfit;
+    console.log('[characters] %s body variants %s: %d → %d triangles (LOD)', sex, VARIANTS.join('/'), base.index.count / 3, B.geoLow.index.count / 3); }
 
   // ---------------- hair: rigged-to-head meshes re-expressed in Head-bone space (static, no skinning) ----------------
   const HAIR_GEO = {}; const hairMat0 = {};
@@ -247,36 +283,61 @@ export async function createCharacters(ctx) {
     HAIR_GEO[HAIR_FILES[i]] = geo; hairMat0[HAIR_FILES[i]] = sm.material;
   });
   const HAIR_MATS = new Map();
+  // hair colour: the texture's brightness (normalised to its average) times the chosen colour, so any colour
+  // from black to white comes out true instead of being multiplied into the texture's own brown
+  const lumAvg = new Map();
+  function texLumAvg(tex) { if (lumAvg.has(tex.uuid)) return lumAvg.get(tex.uuid); const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); x.drawImage(tex.image, 0, 0, 32, 32);
+    const d = x.getImageData(0, 0, 32, 32).data; let L = 0, n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128) { L += (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / 255; n++; }
+    const v = Math.pow(Math.max(L / Math.max(n, 1), 0.05), 2.2); lumAvg.set(tex.uuid, v); return v; }
+  function lumTinted(src, col, rough) {
+    const m = new THREE.MeshStandardMaterial({ map: src.map, normalMap: src.normalMap, color: new THREE.Color(col), roughness: rough, side: THREE.DoubleSide }), k = 1 / texLumAvg(src.map);
+    m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef USE_MAP
+        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+        diffuseColor.rgb *= vec3( dot( sampledDiffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) ) * ${k.toFixed(4)} );
+        diffuseColor.a *= sampledDiffuseColor.a;
+      #endif`); };
+    m.customProgramCacheKey = () => 'vbHairLum' + k.toFixed(3); return m;
+  }
   function hairMat(style, col) {
     const src = hairMat0[style], key = src.map.uuid + col;
-    if (!HAIR_MATS.has(key)) HAIR_MATS.set(key, new THREE.MeshStandardMaterial({ map: src.map, normalMap: src.normalMap, color: new THREE.Color(col).multiplyScalar(1.7), roughness: 0.62, side: THREE.DoubleSide }));
+    if (!HAIR_MATS.has(key)) HAIR_MATS.set(key, lumTinted(src, col, 0.62));
     return HAIR_MATS.get(key);
   }
   const browMats = {}; for (const sex of ['M', 'F']) { let br; BODY[sex].g.scene.traverse((o) => { if (o.isSkinnedMesh && /Hair/.test(o.material.name)) br = o.material; }); browMats[sex] = br; }
   function browMat(sex, col) { const src = browMats[sex], key = 'brow' + sex + col;
-    if (!HAIR_MATS.has(key)) HAIR_MATS.set(key, new THREE.MeshStandardMaterial({ map: src.map, normalMap: src.normalMap, color: new THREE.Color(col).multiplyScalar(1.7), roughness: 0.7, side: THREE.DoubleSide }));
+    if (!HAIR_MATS.has(key)) HAIR_MATS.set(key, lumTinted(src, col, 0.7));
     return HAIR_MATS.get(key); }
+  // eye colour: the iris (the saturated pixels of the brown eye texture) re-coloured, keeping its shading; the whites stay white
+  const EYE_MATS = new Map();
+  function eyeMat(sex, col) { const key = sex + col; if (EYE_MATS.has(key)) return EYE_MATS.get(key);
+    const src = BODY[sex].eyesMat, m = src.clone(), c = new THREE.Color(col);
+    m.onBeforeCompile = (sh) => { sh.uniforms.uIris = { value: c }; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uIris;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        { vec3 b = diffuseColor.rgb; float mx = max(b.r, max(b.g, b.b)), mn = min(b.r, min(b.g, b.b)), sat = (mx - mn) / max(mx, 1e-3);
+          float iris = smoothstep(0.18, 0.35, sat); diffuseColor.rgb = mix(b, uIris * (0.35 + 1.6 * dot(b, vec3(0.3, 0.59, 0.11))), iris); }`); };
+    m.customProgramCacheKey = () => 'vbEye'; EYE_MATS.set(key, m); return m; }
 
   // ---------------- appearances: tinted material variants, created once and shared ----------------
   const APPS = { M: [], F: [] };
   for (const sex of ['M', 'F']) for (let i = 0; i < Q.appearances; i++) {
     const a = makeAppearance(sex, i), B = BODY[sex];
-    a.skinTex = B.skinTex[a.tone < 3 ? 0 : 1];
-    a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol);
-    a.outfit = { full: B.outfit.full.build(a), low: B.outfit.low.build(a) };
+    a.skinTex = B.skinTex[a.mst < 5 ? 0 : 1];
+    a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol); a.eyeMat = eyeMat(sex, a.eyeCol);
+    a.variant = B.variants[a.build]; a.outfit = { full: a.variant.outfit.full.build(a), low: a.variant.outfit.low.build(a) };
     a.id = APPS[sex].length; APPS[sex].push(a);
   }
   // buskers: one look per act and body, built the same way
   const PERF_APPS = { M: {}, F: {} };
   for (const sex of ['M', 'F']) for (const act in PERFORMER_LOOKS) { const B = BODY[sex], a = Object.assign(makeAppearance(sex, 500 + Object.keys(PERFORMER_LOOKS).indexOf(act) * 7), { skirt: undefined, backpack: undefined, pouch: undefined, cap: undefined, sunglasses: undefined }, PERFORMER_LOOKS[act]);
     if (a.cap && !(a.hair === null || /Buzzed/.test(a.hair || ''))) a.hair = sex === 'M' ? 'Hair_Buzzed' : 'Hair_BuzzedFemale';
-    a.skinTex = B.skinTex[a.tone < 3 ? 0 : 1]; a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol);
-    a.outfit = { full: B.outfit.full.build(a), low: B.outfit.low.build(a) }; a.id = 100 + Object.keys(PERFORMER_LOOKS).indexOf(act); PERF_APPS[sex][act] = a; }
+    a.skinTex = B.skinTex[a.mst < 5 ? 0 : 1]; a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol); a.eyeMat = eyeMat(sex, a.eyeCol);
+    a.build = 'everyday'; a.variant = B.variants.everyday; a.outfit = { full: a.variant.outfit.full.build(a), low: a.variant.outfit.low.build(a) }; a.id = 100 + Object.keys(PERFORMER_LOOKS).indexOf(act); PERF_APPS[sex][act] = a; }
   // the player: a fixed recipe, so he looks the same every run (gold tee with purple trim, denim capris, black skate shoes, white socks)
   const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 2, shoes: 2, topCol: '#fdb927', trimCol: '#552583', botCol: '#4a6c9b', denim: true, shoeCol: '#1a1a1a', socks: true,
-    underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false, cap: undefined, sunglasses: undefined, backpack: undefined, pouch: undefined, skirt: undefined });
-  skaterApp.skinTex = BODY.M.skinTex[0]; skaterApp.mat = bodyMaterial(BODY.M.protoMat, BODY.M.lm, skaterApp); skaterApp.hairMat = hairMat(skaterApp.hair, skaterApp.hairCol); skaterApp.browMat = browMat('M', skaterApp.hairCol);
-  skaterApp.outfit = { full: BODY.M.outfit.full.build(skaterApp) }; skaterApp.outfit.low = skaterApp.outfit.full;
+    underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false, mst: 6, eyeCol: EYES.darkBrown, cap: undefined, sunglasses: undefined, backpack: undefined, pouch: undefined, skirt: undefined });
+  skaterApp.skinTex = BODY.M.skinTex[skaterApp.mst < 5 ? 0 : 1]; skaterApp.mat = bodyMaterial(BODY.M.protoMat, BODY.M.lm, skaterApp); skaterApp.hairMat = hairMat(skaterApp.hair, skaterApp.hairCol); skaterApp.browMat = browMat('M', skaterApp.hairCol); skaterApp.eyeMat = eyeMat('M', skaterApp.eyeCol);
+  skaterApp.build = 'everyday'; skaterApp.variant = BODY.M.variants.everyday;
+  skaterApp.outfit = { full: skaterApp.variant.outfit.full.build(skaterApp) }; skaterApp.outfit.low = skaterApp.outfit.full;
 
   // ---------------- props shared by rigs ----------------
   const phoneMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.3, metalness: 0.4, emissive: 0x9ab8ff, emissiveIntensity: 0.0 });
@@ -301,7 +362,8 @@ export async function createCharacters(ctx) {
       this.mixer = new THREE.AnimationMixer(this.root); this.actions = {}; this.cur = null; this.agent = null; this.acc = 0; this.inScene = false; this.shadow = null;
     }
     setApp(a) {
-      this.app = a; this.body.material = a.mat; if (this.brows) this.brows.material = a.browMat;
+      this.app = a; this.body.material = a.mat; if (this.brows) this.brows.material = a.browMat; if (this.eyes && a.eyeMat) this.eyes.material = a.eyeMat;
+      const v = a.variant || this.B.variants.super; this.body.geometry = this.lodFull === false ? v.geoLow : v.geoFull;
       this.hair.visible = !!a.hair; if (a.hair) { this.hair.geometry = HAIR_GEO[a.hair]; this.hair.material = a.hairMat; }
       this.beard.visible = !!a.beard; if (a.beard) this.beard.material = a.hairMat;
       this.showOutfit();
@@ -309,7 +371,7 @@ export async function createCharacters(ctx) {
     showOutfit() { const o = this.app && this.app.outfit, g = o && (this.lodFull === false ? o.low : o.full); this.outfit.visible = !!g; if (g) this.outfit.geometry = g; }
     setShadow(on) { if (this.shadow === on) return; this.shadow = on; this.body.castShadow = on; this.hair.castShadow = on; this.beard.castShadow = on; this.outfit.castShadow = on; if (this.brows) this.brows.castShadow = false; }
     setDetail(near) { if (this.eyes) this.eyes.visible = near; if (this.brows) this.brows.visible = near; }
-    setLOD(full) { if (this.lodFull === full) return; this.lodFull = full; this.body.geometry = full ? this.B.geoFull : this.B.geoLow; this.showOutfit(); }
+    setLOD(full) { if (this.lodFull === full) return; this.lodFull = full; const v = (this.app && this.app.variant) || this.B.variants.super; this.body.geometry = full ? v.geoFull : v.geoLow; this.showOutfit(); }
     action(name) { let a = this.actions[name]; if (!a) a = this.actions[name] = this.mixer.clipAction(this.B.clips[name]); return a; }
     play(name, { fade = 0.3, time, ts = 1 } = {}) {
       const a = this.action(name);
@@ -545,14 +607,8 @@ export async function createCharacters(ctx) {
     return { board, flip, deck, wheels, g: board, agent: null, inScene: false };
   }
   const sk = new Rig('M'); sk.setApp(skaterApp); sk.setShadow(true);
-  // the player gets a lighter body: decimated with meshoptimizer (skin weights carried over), keeping the original
-  // smooth vertex normals, and a softer skin normal map so the 'superhero' muscle definition reads as an everyday build
-  try {
-    const g0 = sk.body.geometry.clone(); for (const n of ['uv1', 'uv2', 'uv3', 'color', 'color_1']) g0.deleteAttribute(n);
-    const before = g0.index.count / 3, g1 = await new SimplifyModifier().modify(g0, Math.round(g0.attributes.position.count * Q.skaterDecimate));
-    g1.computeBoundingSphere(); sk.body.geometry = g1; g0.dispose();
-    console.log('[characters] player body simplified: %d → %d triangles', before, g1.index.count / 3);
-  } catch (err) { console.warn('[characters] could not simplify the player body, keeping the full mesh:', err); }
+  // the player: the everyday build's reduced mesh (light, ~5k triangles) and a softer skin normal map
+  sk.body.geometry = skaterApp.variant.geoLow;
   skaterApp.mat.normalScale.set(0.4, 0.4); skaterApp.mat.roughness = 1;
   if (sk.brows) sk.brows.visible = false;   // brows/eye cards add little at chase-camera distance
   const mainBoard = makeBoard(0x1d1d1f), board = mainBoard.board, flip = mainBoard.flip; skater.add(board); skater.add(sk.wrap);
@@ -725,7 +781,7 @@ export async function createCharacters(ctx) {
     for (let k = 0; k < 12; k++) for (const sex of ['M', 'F']) {
       const r = POOL[sex].find((x) => !x.lineup && (!x.agent || !x.agent.game)); if (!r) continue; if (r.agent) releaseRig(r);
       r.lineup = true; const a = APPS[sex][k % APPS[sex].length]; r.setApp(a); r.setShadow(true); r.setDetail(true); r.setLOD(true); r.phone.visible = false;
-      const row = i < 12 ? 0 : 1, col = i % 12; r.wrap.scale.setScalar(1); r.wrap.position.set(cx + (col - 5.5) * 0.85 + row * 0.42, 0, cz - row * 2.2); r.wrap.rotation.set(0, 0, 0);
+      const row = i < 12 ? 0 : 1, col = i % 12; r.wrap.scale.setScalar(1); r.wrap.position.set(cx + (col - 5.5) * 0.85 + row * 0.42, 0, cz + row * 2.2); r.wrap.rotation.set(0, Math.PI, 0);
       r.snap(CLIP[clip] || clip, i * 0.37, 1); ensureInScene(r); LINEUP.rigs.push(r); i++;
     }
     return LINEUP.rigs.map((r) => ({ x: r.wrap.position.x, z: r.wrap.position.z, sex: r.sex, app: r.app.id }));
