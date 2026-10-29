@@ -14,6 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+import { createOutfitBuilder, MASK_GLSL, outfitMaterial } from './outfits.js';
 
 const BASE = 'assets/characters/';
 const V3 = THREE.Vector3, QT = THREE.Quaternion;
@@ -67,81 +68,43 @@ function ik2(A, B, C, target, pole, weight = 1) {
 }
 
 // -------------------------------------------------------------------------------------
-// Clothing shader. Clothes are painted onto the (underwear) base bodies in bind-pose space: the
-// bind pose is a T-pose, so arm length is |x| and torso/leg bands are y, using bone landmarks
-// measured from each body. Shirts/shorts are pushed out a few mm along the normal for thickness.
+// Body shader. Clothes are separate garment meshes (outfits.js); the body discards the skin they cover,
+// using the same bind-pose region formulas slightly inset, so no limb can show through. Left painted on
+// the skin: swimwear (the base mesh's underwear areas), sandal soles and the player's socks.
 // -------------------------------------------------------------------------------------
-const CLOTH_GLSL = /* glsl */`
-uniform vec4 uLm0;   // ankleY, kneeY, hipY, pelvisY
-uniform vec4 uLm1;   // chestY, neckY, shoulderX, elbowX
-uniform vec4 uLm2;   // wristX, -, -, -
-uniform vec4 uStyle; // top (0 none,1 tank,2 tee,3 long), bottom (0 none,1 shorts,2 knee,3 long), shoes (0 bare,1 sandal,2 sneaker), hood
-uniform vec4 uTrim;  // rgb = trim colour on the top's neck/arm openings, a = 1 to draw it
-float cs(float e, float x) { return smoothstep(e - 0.006, e + 0.006, x); }
-// top garment mask; k shrinks the openings (neck, sleeves/armholes, straps) to find the trim band
-float topMask(vec3 p, float k) {
-  float ax = abs(p.x);
-  float sleeve = (uStyle.x < 1.5 ? uLm1.z * 0.95 : (uStyle.x < 2.5 ? mix(uLm1.z, uLm1.w, 0.45) + 0.02 : uLm2.x - 0.035)) - k;
-  float hem = uLm0.w - 0.06, neck = uLm1.y - 0.03 + uStyle.w * 0.05 - k;
-  float t = cs(hem, p.y) * (1.0 - cs(neck, p.y)) * (1.0 - cs(sleeve, ax));
-  float scoop = (uStyle.x < 1.5 ? 0.12 : 0.055) * (1.0 - uStyle.w) + k;
-  t *= 1.0 - cs(0.0, p.z) * cs(neck - scoop + ax * 0.6, p.y);
-  if (uStyle.x < 1.5) {   // tank: torso only below the armpits, two straps above
-    float upper = cs(uLm1.y - 0.14 - k, p.y), strap = 1.0 - cs(0.032 - k, abs(ax - uLm1.z * 0.45)), torso = 1.0 - cs(uLm1.z * 1.02 - k, ax);
-    t *= mix(torso, strap, upper); }
-  return t;
+// average colour of a skin texture's skin (its saturated pixels; the underwear areas are grey), cached per texture
+const SKIN_AVG = new Map();
+function skinAverage(tex) {
+  if (SKIN_AVG.has(tex.uuid)) return SKIN_AVG.get(tex.uuid);
+  const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); x.drawImage(tex.image, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data;
+  let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) { const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]); if (mx > 30 && (mx - mn) / mx > 0.25) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } }
+  const col = n ? new THREE.Color().setRGB(r / n / 255, g / n / 255, b / n / 255, THREE.SRGBColorSpace) : new THREE.Color(0.6, 0.45, 0.35); SKIN_AVG.set(tex.uuid, col); return col;
 }
-void clothMasks(vec3 p, out float top, out float bot, out float shoe) {
-  top = 0.0;
-  if (uStyle.x > 0.5) top = topMask(p, 0.0);
-  bot = 0.0;
-  if (uStyle.y > 0.5) {
-    float end = uStyle.y < 1.5 ? uLm0.y + 0.12 : (uStyle.y < 2.5 ? uLm0.y - 0.07 : uLm0.x + 0.04);
-    bot = cs(end, p.y) * (1.0 - cs(uLm0.w + 0.07, p.y));
-  }
-  shoe = 0.0;
-  if (uStyle.z > 0.5) shoe = 1.0 - cs(uStyle.z < 1.5 ? 0.02 : uLm0.x + 0.03, p.y);
-}`;
 function bodyMaterial(proto, lm, app) {
+  // the base mesh's underwear areas: swimwear when the recipe says so, otherwise skin (they show at necklines and hems)
+  const under = app.swim ? new THREE.Color(app.underCol) : skinAverage(app.skinTex).clone().multiply(new THREE.Color().setRGB(...app.skinTint)).multiplyScalar(1.15);
   const m = new THREE.MeshStandardMaterial({ map: app.skinTex, normalMap: proto.normalMap, roughnessMap: proto.roughnessMap, roughness: 1, metalness: 0 });
   const u = {
     uLm0: { value: lm[0] }, uLm1: { value: lm[1] }, uLm2: { value: lm[2] },
-    uStyle: { value: new THREE.Vector4(app.top, app.bottom, app.shoes, app.hood) },
-    uTrim: { value: new THREE.Vector4(...(app.trimCol ? new THREE.Color(app.trimCol).toArray() : [0, 0, 0]), app.trimCol ? 1 : 0) },
-    uSkin: { value: new THREE.Color().setRGB(...app.skinTint) }, uTop: { value: new THREE.Color(app.topCol) },
-    uBot: { value: new THREE.Color(app.botCol) }, uShoe: { value: new THREE.Color(app.shoeCol) }, uUnder: { value: new THREE.Color(app.underCol) },
+    uStyle: { value: new THREE.Vector4(app.top, app.bottom, app.shoes, 0) },
+    uSkin: { value: new THREE.Color().setRGB(...app.skinTint) }, uShoe: { value: new THREE.Color(app.shoeCol) }, uUnder: { value: under },
+    uSocks: { value: app.socks ? 1 : 0 },
   };
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, u);
-    s.vertexShader = s.vertexShader.replace('#include <common>', `#include <common>\n${CLOTH_GLSL}\nvarying vec3 vBindPos;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vBindPos = position;
-        { float t, b, sh; clothMasks(position, t, b, sh); transformed += normal * (0.012 * t + 0.01 * b + 0.006 * sh); }`);
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>\n${CLOTH_GLSL}\nvarying vec3 vBindPos;
-        uniform vec3 uSkin, uTop, uBot, uShoe, uUnder;`)
-      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        float cTop, cBot, cShoe; clothMasks(vBindPos, cTop, cBot, cShoe); float cAny = max(max(cTop, cBot), cShoe);`)
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvBindPos = position;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>\n${MASK_GLSL}\nvarying vec3 vBindPos;\nuniform vec3 uSkin, uShoe, uUnder; uniform float uSocks;`)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (coveredByOutfit(vBindPos) > 0.5) discard;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         { vec3 base = diffuseColor.rgb; float mx = max(base.r, max(base.g, base.b)), mn = min(base.r, min(base.g, base.b));
           float under = 1.0 - smoothstep(0.12, 0.24, (mx - mn) / max(mx, 1e-3));   // underwear areas are the grey ones
-          float lum = dot(base, vec3(0.3, 0.59, 0.11));
-          float shade = clamp(mix(1.0, lum / 0.2, 0.5), 0.6, 1.2), ushade = clamp(mix(1.0, lum / 0.38, 0.6), 0.55, 1.15);
+          float lum = dot(base, vec3(0.3, 0.59, 0.11)), ushade = clamp(mix(1.0, lum / 0.38, 0.6), 0.55, 1.15);
           vec3 col = mix(base * uSkin, uUnder * ushade, under);
-          vec3 botCol = uBot * shade;
-          if (uTrim.w > 0.5) botCol *= 0.94 + 0.12 * fract(sin(dot(floor(vBindPos.xy * 300.0), vec2(12.9898, 78.233))) * 43758.5453);   // denim-style speckle on the trimmed outfit
-          col = mix(col, botCol, cBot); col = mix(col, uTop * shade, cTop);
-          if (uTrim.w > 0.5 && cTop > 0.0) col = mix(col, uTrim.rgb * shade, clamp(cTop - topMask(vBindPos, 0.018), 0.0, 1.0));
-          col = mix(col, uShoe * shade, cShoe);
-          if (uTrim.w > 0.5) {   // the player's outfit: white crew socks above the shoes, white rubber soles
-            float sock = cs(uLm0.x + 0.03, vBindPos.y) * (1.0 - cs(uLm0.x + 0.12, vBindPos.y)) * (1.0 - cBot);
-            col = mix(col, vec3(0.9, 0.9, 0.88) * shade, sock);
-            col = mix(col, vec3(0.93, 0.92, 0.88) * shade, cShoe * (1.0 - cs(0.028, vBindPos.y))); }
-          diffuseColor.rgb = col; }`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, 0.92, max(cTop, cBot)); roughnessFactor = mix(roughnessFactor, 0.6, cShoe);`)
-      .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - 0.85 * cAny);');
+          if (uStyle.z > 0.5 && uStyle.z < 1.5) col = mix(col, uShoe * 0.9, 1.0 - csm(0.02, vBindPos.y));   // sandal soles
+          if (uSocks > 0.5) col = mix(col, vec3(0.9, 0.9, 0.88), csm(uLm0.x + 0.02, vBindPos.y) * (1.0 - csm(uLm0.x + 0.12, vBindPos.y)));
+          diffuseColor.rgb = col; }`);
   };
-  m.customProgramCacheKey = () => 'vbCharBody2';
+  m.customProgramCacheKey = () => 'vbCharBody3';
   return m;
 }
 
@@ -150,27 +113,47 @@ function bodyMaterial(proto, lm, app) {
 // -------------------------------------------------------------------------------------
 const SKIN_TONES = [   // multiplier on the base skin texture (Light texture for the first three, Dark for the rest)
   [1.08, 1.02, 0.98], [0.98, 0.9, 0.84], [0.88, 0.74, 0.62], [0.72, 0.56, 0.45], [0.54, 0.4, 0.32], [0.38, 0.27, 0.21]];
-const TOPS = ['#e8322b', '#f4f4f2', '#141414', '#2a6fc9', '#f2cf4a', '#24a865', '#ef8a2a', '#e45a9a', '#6a45c0', '#8f969c', '#efe4cf', '#123c66', '#7fc6d8', '#b52f45', '#3d5a40'];
-const BOTS = ['#2b3a55', '#1b1b1b', '#5a5a5a', '#c9b48f', '#3a5f8a', '#6b4a2b', '#e8e2d4', '#2f4a3a', '#4a6fa5', '#202838'];
+const TOPS = ['#e8322b', '#f4f4f2', '#141414', '#2a6fc9', '#f2cf4a', '#24a865', '#ef8a2a', '#e45a9a', '#6a45c0', '#8f969c', '#efe4cf', '#123c66', '#7fc6d8', '#b52f45', '#3d5a40', '#f2b8c6', '#ffffff', '#c9d6a3'];
+const HOODIES = ['#2b2b2e', '#6d7278', '#1f3a5f', '#7a1f2b', '#3d5a40', '#c9b48f', '#e9e4da'];
+const DRESSES = ['#e45a9a', '#f2cf4a', '#7fc6d8', '#f4f4f2', '#e8322b', '#24a865', '#6a45c0', '#f08a5d', '#2a6fc9'];
+const SHORTS = ['#c9b48f', '#2b3a55', '#5a5a5a', '#3a5f8a', '#6b4a2b', '#e8e2d4', '#2f4a3a', '#1b1b1b', '#b52f45'];
+const DENIM = ['#3e5f8a', '#4a6c9b', '#2c4466', '#5b7fae', '#1d2a3c', '#7d93b2'];
+const TROUSERS = ['#1b1b1b', '#5a5a5a', '#c9b48f', '#2f4a3a', '#e8e2d4'];
 const SWIM = ['#e8322b', '#1d1d1d', '#2a7de1', '#f05aa0', '#ffd23f', '#1fb5a8', '#ffffff', '#ff7a2f'];
-const SHOES = ['#f2f2f2', '#1a1a1a', '#c23030', '#2a4f8f', '#7a6a58', '#d9d2c3'];
+const SHOES = ['#f2f2f2', '#1a1a1a', '#c23030', '#2a4f8f', '#7a6a58', '#d9d2c3', '#3d5a40'];
+const CAPS = ['#1b1b1b', '#f4f4f2', '#2a6fc9', '#c8102e', '#3d5a40', '#c9b48f'];
+const BAGS = ['#2b2b2e', '#c9b48f', '#1f3a5f', '#e45a9a', '#24a865', '#7a1f2b', '#f2cf4a'];
 const HAIR_COLS = ['#141110', '#2a1c14', '#4a3020', '#6e4a2e', '#c8a46a', '#8a3a1e', '#9a9a9a', '#d8c08a'];
 const HAIR_STYLES = { M: [['Hair_Buzzed', 0.35], ['Hair_SimpleParted', 0.35], ['Hair_Long', 0.12], [null, 0.1], ['Hair_Buns', 0.03]],
   F: [['Hair_Long', 0.42], ['Hair_Buns', 0.24], ['Hair_SimpleParted', 0.16], ['Hair_BuzzedFemale', 0.18]] };
+// a seeded wardrobe recipe: top / bottom / shoes styles and colours, accessories (codes in outfits.js)
 function makeAppearance(sex, i) {
   R = mulberry32(9001 + i * 131 + (sex === 'F' ? 7 : 0));
-  const tone = randi(0, 5), swim = sex === 'F' ? chance(0.1) : chance(0.1);
-  const a = { sex, tone, skinTint: SKIN_TONES[tone], hood: 0, underCol: swim ? pick(SWIM) : '#2a2a2e',
-    topCol: pick(TOPS), botCol: pick(BOTS), shoeCol: pick(SHOES), hairCol: pick(HAIR_COLS.slice(0, tone > 3 ? 3 : 8)) };
-  if (swim) { a.top = 0; a.bottom = sex === 'M' ? 1 : 0; a.botCol = sex === 'M' ? pick(SWIM) : a.botCol; a.shoes = chance(0.6) ? 1 : 0; }
+  const tone = randi(0, 5), swim = chance(0.07);
+  const a = { sex, tone, swim, skinTint: SKIN_TONES[tone], underCol: swim ? pick(SWIM) : '#2a2a2e', shoeCol: pick(SHOES), hairCol: pick(HAIR_COLS.slice(0, tone > 3 ? 3 : 8)) };
+  if (swim) { a.top = 0; a.bottom = 0; a.shoes = chance(0.6) ? 1 : 0; if (sex === 'M') { a.bottom = 1; a.botCol = pick(SWIM); } }
   else {
-    a.top = sex === 'M' ? wpick([[1, 0.12], [2, 0.6], [3, 0.28]]) : wpick([[1, 0.3], [2, 0.42], [3, 0.28]]);
-    a.bottom = sex === 'M' ? wpick([[1, 0.42], [2, 0.13], [3, 0.45]]) : wpick([[1, 0.35], [2, 0.18], [3, 0.47]]);
-    a.shoes = wpick([[1, 0.3], [2, 0.7]]); a.hood = a.top === 3 && chance(0.35) ? 1 : 0;
+    a.top = sex === 'M' ? wpick([[2, 0.42], [3, 0.16], [4, 0.14], [1, 0.16], [0, 0.04]]) : wpick([[2, 0.3], [1, 0.2], [3, 0.12], [4, 0.12], [5, 0.26]]);
+    if (a.top === 0) { a.underCol = pick(SWIM); a.swim = true; }   // shirtless: board shorts
+    a.topCol = a.top === 4 ? pick(HOODIES) : a.top === 5 ? pick(DRESSES) : pick(TOPS);
+    if (a.top === 5) { a.bottom = 4; a.skirt = { col: a.topCol, flare: rand(0.08, 0.16) }; }   // sundress: bodice + skirt (the body under the skirt is masked)
+    else { a.bottom = wpick([[1, 0.42], [2, 0.14], [3, 0.44]]); a.denim = a.bottom !== 1 && chance(0.7) || (a.bottom === 1 && chance(0.2));
+      a.botCol = a.denim ? pick(DENIM) : a.bottom === 1 ? pick(SHORTS) : pick(TROUSERS); }
+    a.shoes = wpick([[2, 0.66], [1, 0.32], [0, 0.02]]);
   }
   a.hair = wpick(HAIR_STYLES[sex]); a.beard = sex === 'M' && chance(0.28);
+  // accessories: caps only over close-cropped hair (or none), so the hair can't push through
+  if (!swim && (a.hair === null || a.hair === 'Hair_Buzzed' || a.hair === 'Hair_BuzzedFemale') && chance(0.4)) a.cap = pick(CAPS);
+  if (chance(0.3)) a.sunglasses = true;
+  if (!swim && chance(0.12)) a.backpack = pick(BAGS); else if (chance(0.12)) a.pouch = pick(BAGS);
   return a;
 }
+// buskers dress for the job: distinct, recognisable outfits
+const PERFORMER_LOOKS = {
+  guitar: { top: 3, topCol: '#8a2f2a', bottom: 3, botCol: '#2c4466', denim: true, shoes: 2, shoeCol: '#7a6a58', cap: '#1b1b1b' },
+  drum: { top: 1, topCol: '#f2cf4a', bottom: 1, botCol: '#3d5a40', shoes: 1, shoeCol: '#6b4a2b', sunglasses: true },
+  piano: { top: 2, topCol: '#141414', bottom: 3, botCol: '#5a5a5a', shoes: 2, shoeCol: '#f2f2f2', sunglasses: true },
+};
 
 // -------------------------------------------------------------------------------------
 export async function createCharacters(ctx) {
@@ -239,12 +222,18 @@ export async function createCharacters(ctx) {
   // detail LOD: a reduced body mesh per sex (meshoptimizer; skin weights carried over). Rigs use the full mesh within
   // Q.lodNear metres and the reduced one beyond Q.lodFar (the gap is hysteresis, so nobody flickers between the two)
   const simplifier = new SimplifyModifier();
+  const outfitBuilders = (sex) => { const B = BODY[sex]; let body, eyes; B.g.scene.traverse((o) => { if (o.isSkinnedMesh) { if (/Eyes/.test(o.material.name)) eyes = o; else if (!/Hair/.test(o.material.name)) body = o; } });
+    const boneIndex = {}; body.skeleton.bones.forEach((b, i) => { boneIndex[b.name] = i; });
+    const bonePos = {}; for (const n of ['Head', 'neck_01', 'spine_03', 'pelvis']) bonePos[n] = B.g.scene.getObjectByName(n).getWorldPosition(new V3());
+    eyes.geometry.computeBoundingBox(); const ctx = { lm: B.lm, boneIndex, bonePos, eyesBox: eyes.geometry.boundingBox };
+    B.outfit = { full: createOutfitBuilder({ ...ctx, geo: B.geoFull }), low: createOutfitBuilder({ ...ctx, geo: B.geoLow }) }; };
   for (const sex of ['M', 'F']) { let body; BODY[sex].g.scene.traverse((o) => { if (o.isSkinnedMesh && !/Eyes|Hair/.test(o.material.name)) body = o; });
     const g0 = body.geometry; BODY[sex].geoFull = g0;
     try { const c = g0.clone(); for (const n of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(n)) c.deleteAttribute(n);
       const low = await simplifier.modify(c, Math.round(c.attributes.position.count * Q.lodReduce)); low.computeBoundingSphere(); BODY[sex].geoLow = low; c.dispose();
       console.log('[characters] %s body LOD: %d → %d triangles', sex, g0.index.count / 3, low.index.count / 3);
-    } catch (err) { console.warn('[characters] body LOD failed, using the full mesh everywhere:', err); BODY[sex].geoLow = g0; } }
+    } catch (err) { console.warn('[characters] body LOD failed, using the full mesh everywhere:', err); BODY[sex].geoLow = g0; }
+    outfitBuilders(sex); }
 
   // ---------------- hair: rigged-to-head meshes re-expressed in Head-bone space (static, no skinning) ----------------
   const HAIR_GEO = {}; const hairMat0 = {};
@@ -274,10 +263,20 @@ export async function createCharacters(ctx) {
     const a = makeAppearance(sex, i), B = BODY[sex];
     a.skinTex = B.skinTex[a.tone < 3 ? 0 : 1];
     a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol);
+    a.outfit = { full: B.outfit.full.build(a), low: B.outfit.low.build(a) };
     a.id = APPS[sex].length; APPS[sex].push(a);
   }
-  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 2, shoes: 2, hood: 0, topCol: '#fdb927', trimCol: '#552583', botCol: '#4a6c9b', shoeCol: '#1a1a1a', underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false });
+  // buskers: one look per act and body, built the same way
+  const PERF_APPS = { M: {}, F: {} };
+  for (const sex of ['M', 'F']) for (const act in PERFORMER_LOOKS) { const B = BODY[sex], a = Object.assign(makeAppearance(sex, 500 + Object.keys(PERFORMER_LOOKS).indexOf(act) * 7), { skirt: undefined, backpack: undefined, pouch: undefined, cap: undefined, sunglasses: undefined }, PERFORMER_LOOKS[act]);
+    if (a.cap && !(a.hair === null || /Buzzed/.test(a.hair || ''))) a.hair = sex === 'M' ? 'Hair_Buzzed' : 'Hair_BuzzedFemale';
+    a.skinTex = B.skinTex[a.tone < 3 ? 0 : 1]; a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol);
+    a.outfit = { full: B.outfit.full.build(a), low: B.outfit.low.build(a) }; a.id = 100 + Object.keys(PERFORMER_LOOKS).indexOf(act); PERF_APPS[sex][act] = a; }
+  // the player: a fixed recipe, so he looks the same every run (gold tee with purple trim, denim capris, black skate shoes, white socks)
+  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 2, shoes: 2, topCol: '#fdb927', trimCol: '#552583', botCol: '#4a6c9b', denim: true, shoeCol: '#1a1a1a', socks: true,
+    underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false, cap: undefined, sunglasses: undefined, backpack: undefined, pouch: undefined, skirt: undefined });
   skaterApp.skinTex = BODY.M.skinTex[0]; skaterApp.mat = bodyMaterial(BODY.M.protoMat, BODY.M.lm, skaterApp); skaterApp.hairMat = hairMat(skaterApp.hair, skaterApp.hairCol); skaterApp.browMat = browMat('M', skaterApp.hairCol);
+  skaterApp.outfit = { full: BODY.M.outfit.full.build(skaterApp) }; skaterApp.outfit.low = skaterApp.outfit.full;
 
   // ---------------- props shared by rigs ----------------
   const phoneMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.3, metalness: 0.4, emissive: 0x9ab8ff, emissiveIntensity: 0.0 });
@@ -295,16 +294,22 @@ export async function createCharacters(ctx) {
       this.hair = new THREE.Mesh(HAIR_GEO.Hair_Buzzed, hairMat('Hair_Buzzed', '#222')); this.beard = new THREE.Mesh(HAIR_GEO.Hair_Beard, this.hair.material);
       for (const m of [this.hair, this.beard]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; this.bones.Head.add(m); }
       this.phone = new THREE.Mesh(phoneGeo, phoneMat); this.phone.visible = false; this.wrap.add(this.phone);
+      // everything this character wears: one skinned mesh on the same skeleton as the body
+      this.outfit = new THREE.SkinnedMesh(new THREE.BufferGeometry(), outfitMaterial); this.outfit.frustumCulled = false; this.outfit.castShadow = true; this.outfit.receiveShadow = true;
+      this.body.parent.add(this.outfit); this.outfit.position.copy(this.body.position); this.outfit.quaternion.copy(this.body.quaternion); this.outfit.scale.copy(this.body.scale);
+      this.outfit.bind(this.body.skeleton, this.body.bindMatrix);
       this.mixer = new THREE.AnimationMixer(this.root); this.actions = {}; this.cur = null; this.agent = null; this.acc = 0; this.inScene = false; this.shadow = null;
     }
     setApp(a) {
       this.app = a; this.body.material = a.mat; if (this.brows) this.brows.material = a.browMat;
       this.hair.visible = !!a.hair; if (a.hair) { this.hair.geometry = HAIR_GEO[a.hair]; this.hair.material = a.hairMat; }
       this.beard.visible = !!a.beard; if (a.beard) this.beard.material = a.hairMat;
+      this.showOutfit();
     }
-    setShadow(on) { if (this.shadow === on) return; this.shadow = on; this.body.castShadow = on; this.hair.castShadow = on; this.beard.castShadow = on; if (this.brows) this.brows.castShadow = false; }
+    showOutfit() { const o = this.app && this.app.outfit, g = o && (this.lodFull === false ? o.low : o.full); this.outfit.visible = !!g; if (g) this.outfit.geometry = g; }
+    setShadow(on) { if (this.shadow === on) return; this.shadow = on; this.body.castShadow = on; this.hair.castShadow = on; this.beard.castShadow = on; this.outfit.castShadow = on; if (this.brows) this.brows.castShadow = false; }
     setDetail(near) { if (this.eyes) this.eyes.visible = near; if (this.brows) this.brows.visible = near; }
-    setLOD(full) { if (this.lodFull === full) return; this.lodFull = full; this.body.geometry = full ? this.B.geoFull : this.B.geoLow; }
+    setLOD(full) { if (this.lodFull === full) return; this.lodFull = full; this.body.geometry = full ? this.B.geoFull : this.B.geoLow; this.showOutfit(); }
     action(name) { let a = this.actions[name]; if (!a) a = this.actions[name] = this.mixer.clipAction(this.B.clips[name]); return a; }
     play(name, { fade = 0.3, time, ts = 1 } = {}) {
       const a = this.action(name);
@@ -450,7 +455,10 @@ export async function createCharacters(ctx) {
   const LANE_CLEAR = Q.laneClear ?? 4.3;   // half-width of the play lanes kept free of ambient people
   const GAME_AGENTS = [];                  // pedestrians placed and moved by game.js (obstacles); rigged before anyone else
   R = mulberry32(31337);
-  function newAgent(kind, sex) { const s = sex || (chance(0.5) ? 'M' : 'F'); const app = pick(APPS[s]);
+  // people who sit or ride never get a dress: a skirt hangs straight and can't follow thighs bent forward
+  const NO_SKIRT = new Set(['sit', 'beg', 'smoke', 'drum', 'guitar', 'cycle', 'skate']);
+  function newAgent(kind, sex) { const s = sex || (chance(0.5) ? 'M' : 'F'); let app = pick(APPS[s]);
+    if (NO_SKIRT.has(kind)) { const ok = APPS[s].filter((x) => !x.skirt); app = ok[Math.floor(R() * ok.length)]; }
     // the free bodies are 'Superhero' builds: narrow them in x/z for everyday proportions
     return { kind, sex: s, app, scale: s === 'M' ? rand(0.92, 1.03) : rand(0.9, 0.99), w: s === 'M' ? rand(0.84, 0.97) : rand(0.88, 0.99), x: 0, y: 0, z: 0, ry: 0, dir: 1, ts: 1, speed: 0,
       clip: CLIP.idle, t0: rand(0, 10), rig: null, dist: 1e9, vis: false, seen: -1, stopT: 0, stopFor: 0, stopClip: CLIP.idle, leader: null, offX: 0, offZ: 0,
@@ -497,6 +505,7 @@ export async function createCharacters(ctx) {
   // people standing or lying still in a lane: 'selfie' (phone held up, a.ry = facing) or 'lie' (on a towel)
   function addGameStation({ kind, x, z, ry, seed, sex }) {
     R = mulberry32(seed >>> 0); const a = newAgent(kind, sex); a.game = true; a.x = x; a.y = 0; a.z = z; a.ry = ry; a.scale = clamp(a.scale, 0.93, 1.0);
+    if (PERF_APPS[a.sex][kind]) a.app = PERF_APPS[a.sex][kind];   // buskers wear their act's outfit
     a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : kind === 'watch' && chance(0.35) ? CLIP.talk : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
     if (SIT_KINDS.has(kind)) a.y = FLOOR;   // sitting on the ground
     GAME_AGENTS.push(a); return a;
@@ -709,7 +718,7 @@ export async function createCharacters(ctx) {
       else { a.rig.phone.getWorldPosition(s.position); s.scale.setScalar(0.5 + k * 1.2); s.material.opacity = 1 - k; s.material.rotation = 0; } } }
   // debug lineup (L): 24 pooled rigs (12 per body, one appearance each) in two rows facing +z, idling, full detail
   const LINEUP = { rigs: [] };
-  function lineup(on, cx = 0, cz = 0) {
+  function lineup(on, cx = 0, cz = 0, clip = 'idle') {
     for (const r of LINEUP.rigs) { r.lineup = false; removeFromScene(r); } LINEUP.rigs = [];
     if (!on) return [];
     let i = 0;
@@ -717,7 +726,7 @@ export async function createCharacters(ctx) {
       const r = POOL[sex].find((x) => !x.lineup && (!x.agent || !x.agent.game)); if (!r) continue; if (r.agent) releaseRig(r);
       r.lineup = true; const a = APPS[sex][k % APPS[sex].length]; r.setApp(a); r.setShadow(true); r.setDetail(true); r.setLOD(true); r.phone.visible = false;
       const row = i < 12 ? 0 : 1, col = i % 12; r.wrap.scale.setScalar(1); r.wrap.position.set(cx + (col - 5.5) * 0.85 + row * 0.42, 0, cz - row * 2.2); r.wrap.rotation.set(0, 0, 0);
-      r.snap(CLIP.idle, i * 0.37, 1); ensureInScene(r); LINEUP.rigs.push(r); i++;
+      r.snap(CLIP[clip] || clip, i * 0.37, 1); ensureInScene(r); LINEUP.rigs.push(r); i++;
     }
     return LINEUP.rigs.map((r) => ({ x: r.wrap.position.x, z: r.wrap.position.z, sex: r.sex, app: r.app.id }));
   }
