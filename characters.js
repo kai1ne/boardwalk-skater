@@ -553,7 +553,7 @@ export async function createCharacters(ctx) {
       if (a.bike) { a.bike.agent = null; removeFromScene(a.bike); a.bike = null; } if (a.board) { a.board.agent = null; removeFromScene(a.board); a.board = null; } if (a.prop) { a.prop.agent = null; removeFromScene(a.prop); a.prop = null; } }
     r.agent = null; r.phone.visible = false; removeFromScene(r); }
   function assignRig(a) {
-    const pool = POOL[a.sex]; let r = null; for (const x of pool) if (!x.agent) { r = x; break; } if (!r) return false;
+    const pool = POOL[a.sex]; let r = null; for (const x of pool) if (!x.agent && !x.lineup) { r = x; break; } if (!r) return false;
     // IK-driven rigs keep a uniform scale so world-space bone maths stays exact
     const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || a.kind === 'piano' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
     r.agent = a; a.rig = r; r.setApp(a.app); r.acc = 0; r.wrap.scale.set(a.scale * wb, a.scale, a.scale * wb);
@@ -697,6 +697,20 @@ export async function createCharacters(ctx) {
       if (k >= 1 || !a.rig) { s.visible = false; continue; }
       if (u.type === 'bell') { s.position.set(a.x, 2.3 + Math.abs(Math.sin(u.t * 14)) * 0.08, a.z); s.scale.setScalar(0.65); s.material.opacity = 1 - smooth(0.7, 1, k); s.material.rotation = Math.sin(u.t * 24) * 0.3; }
       else { a.rig.phone.getWorldPosition(s.position); s.scale.setScalar(0.5 + k * 1.2); s.material.opacity = 1 - k; s.material.rotation = 0; } } }
+  // debug lineup (L): 24 pooled rigs (12 per body, one appearance each) in two rows facing +z, idling, full detail
+  const LINEUP = { rigs: [] };
+  function lineup(on, cx = 0, cz = 0) {
+    for (const r of LINEUP.rigs) { r.lineup = false; removeFromScene(r); } LINEUP.rigs = [];
+    if (!on) return [];
+    let i = 0;
+    for (let k = 0; k < 12; k++) for (const sex of ['M', 'F']) {
+      const r = POOL[sex].find((x) => !x.lineup && (!x.agent || !x.agent.game)); if (!r) continue; if (r.agent) releaseRig(r);
+      r.lineup = true; const a = APPS[sex][k % APPS[sex].length]; r.setApp(a); r.setShadow(true); r.setDetail(true); r.phone.visible = false;
+      const row = i < 12 ? 0 : 1, col = i % 12; r.wrap.scale.setScalar(1); r.wrap.position.set(cx + (col - 5.5) * 0.85 + row * 0.42, 0, cz - row * 2.2); r.wrap.rotation.set(0, 0, 0);
+      r.snap(CLIP.idle, i * 0.37, 1); ensureInScene(r); LINEUP.rigs.push(r); i++;
+    }
+    return LINEUP.rigs.map((r) => ({ x: r.wrap.position.x, z: r.wrap.position.z, sex: r.sex, app: r.app.id }));
+  }
   // smoke puffs: a small pool of fading spheres
   const PUFFS = []; { const pg = new THREE.SphereGeometry(0.05, 8, 6);
     for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
@@ -883,6 +897,7 @@ export async function createCharacters(ctx) {
     impostors.count = n; impostors.instanceMatrix.needsUpdate = true; aCell.needsUpdate = true; stats.imp = n;
 
     updatePuffs(dt); updateCues(dt);
+    for (const r of LINEUP.rigs) r.update(dt);
     updateSkater(dt, t);
   }
   const _M = new THREE.Matrix4(), _S = new V3();
@@ -891,6 +906,6 @@ export async function createCharacters(ctx) {
   const aoHidden = [];
   function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
-  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
+  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
 }

@@ -1755,11 +1755,25 @@ const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
   if (game && game.keydown(e)) { e.preventDefault(); return; }
   if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
-  else if (e.key === 'l' || e.key === 'L') cyclePaused = !cyclePaused;   // P is the autopilot now
+  else if (e.key === 'j' || e.key === 'J') cyclePaused = !cyclePaused;   // P is the autopilot, L/K the character lineup
+  else if ((e.key === 'l' || e.key === 'L') && chars) setLineup(!LINE.on);
+  else if ((e.key === 'k' || e.key === 'K') && chars) { if (!LINE.on) setLineup(true); LINE.close = (LINE.close + 1) % (LINE.spots.length + 1); aimLineup(); }
   else if (e.key === 'o' || e.key === 'O') { if (gtaoPass) gtaoPass.enabled = !gtaoPass.enabled; }
   else if (e.key === 'c' || e.key === 'C') { camMode = camMode === 'chase' ? 'ref' : 'chase'; if (camMode === 'ref') Object.assign(REF_POSE, { x: S.x, y: 1.7, z: S.z, yaw: 0, pitch: 2 }); }
 });
 window.addEventListener('keyup', (e) => { if (game) game.keyup(e); });
+// debug character lineup: L shows 24 characters in two rows; K steps a 2 m close-up through them (K again past the last = back to the rows)
+const LINE = { on: false, close: 0, spots: [] };
+function setLineup(on) {
+  LINE.on = on; LINE.close = 0;
+  if (!on) { chars.lineup(false); camMode = 'chase'; __vb.showSkater = false; return; }
+  const cz = S.z - 9; LINE.spots = chars.lineup(true, 0, cz); LINE.cz = cz; aimLineup();
+}
+function aimLineup() {
+  camMode = 'ref';
+  if (!LINE.close) Object.assign(REF_POSE, { x: 0, y: 1.45, z: LINE.cz + 8.6, yaw: 0, pitch: -4, fov: 62 });
+  else { const p = LINE.spots[LINE.close - 1]; Object.assign(REF_POSE, { x: p.x, y: 1.5, z: p.z + 2.0, yaw: 0, pitch: -3, fov: 38 }); }
+}
 // Adaptive resolution: pixel ratio floats between 1 and min(devicePixelRatio, 2) to hold ~60 fps.
 let renderScale = Math.min(window.devicePixelRatio, Q.pixelRatioMax, Q.startPixelRatio);
 const DRS = { acc: 0, n: 0, cool: 2 };
@@ -1782,7 +1796,7 @@ function updateHud(dt) {
   fpsAcc += dt; fpsN++; hudT -= dt;
   if (fpsAcc >= 1) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (hudT <= 0) { hudT = 0.25; const cs = chars ? chars.stats : null;
-    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · L hold phase · P autopilot · H hitboxes · O AO · C camera</span>`; }
+    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · J hold phase · P autopilot · L lineup · K close-up · H hitboxes · O AO · C camera</span>`; }
 }
 
 // Debug / screenshot hooks (used for the reference comparisons)
@@ -1795,6 +1809,7 @@ window.__vb = {
   chase() { camMode = 'chase'; },
   stop(v = true) { S.moving = !v; },
   get game() { return game; },
+  setLineup, LINE,
   findKind(kind, from = 2) { for (let i = from; i < from + 200; i++) if (kindFor(i) === kind) return i; return -1; },
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
   get chars() { return chars; },
@@ -1830,7 +1845,7 @@ function step(dt, t) {
   U.time.value = t;
   if (!cyclePaused) cycleT += dt;
   computePhase(); applyPhase(dt);
-  if (game) game.update(dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }
+  if (game) game.update(LINE.on ? 0 : dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }   // the lineup holds the game still
   skater.position.set(S.x, 0, S.z);
   skater.visible = (camMode === 'chase' || __vb.showSkater) && !S.hidden;
   updateCamera(dt);

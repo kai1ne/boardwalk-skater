@@ -31,7 +31,9 @@ Debug keys:
 | Key | Action |
 |---|---|
 | 1–4 | Jump to a lighting phase: sunny midday, golden hour, marine-layer fog, blue hour |
-| L | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| J | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| L | Character lineup: 24 characters in two rows (the game holds still) |
+| K | Close-up at 2 m, stepping through the lineup characters one by one |
 | P | Autopilot: a bot plays the game (shown as AUTOPILOT at the top) |
 | H | Draw the collision boxes (cyan = skater, red = solid, orange = jumpable, yellow = slip), including each part of a dog-walker pair |
 | C | Switch between the chase camera and an eye-level (1.7 m) camera |
