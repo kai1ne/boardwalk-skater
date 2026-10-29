@@ -1272,7 +1272,8 @@ const birdGeo = (gull) => mergeColored([[xform(new THREE.SphereGeometry(1, 8, 6)
   [xform(new THREE.SphereGeometry(gull ? 0.06 : 0.048, 8, 6), 0, gull ? 0.26 : 0.19, gull ? 0.2 : 0.12), gull ? '#ffffff' : '#5d6168'],
   [xform(boxG(gull ? 0.2 : 0.12, 0.02, gull ? 0.26 : 0.14), 0, gull ? 0.2 : 0.15, gull ? -0.06 : -0.06, 0.2, 0, 0), gull ? '#9aa0a8' : '#6c7078'],
   [xform(new THREE.ConeGeometry(0.018, 0.07, 5), 0, gull ? 0.25 : 0.18, gull ? 0.29 : 0.17, Math.PI / 2, 0, 0), gull ? '#e8b030' : '#2a2a2a'],
-  [xform(cylG(0.008, 0.008, 0.1, 4), 0, 0.05, 0), '#c07a50']]);
+  [xform(cylG(0.008, 0.008, 0.1, 4), 0, 0.05, 0), '#c07a50'],
+  ...(gull ? [[xform(boxG(0.13, 0.018, 0.11), 0, 0.17, -0.24, 0.3, 0, 0), '#1d1e20']] : [])]);
 IM.pigeon = makeInst(birdGeo(false), vcol({ roughness: 0.9 }), PER.pigeon, { colors: true });
 IM.gull = makeInst(birdGeo(true), vcol({ roughness: 0.9 }), PER.gull, { colors: true });
 IM.litter = makeInst(new THREE.PlaneGeometry(0.13, 0.09).rotateX(-Math.PI / 2).translate(0, 0.012, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide }), PER.litter, { cast: false, colors: true });
@@ -1659,21 +1660,39 @@ function updateBirds(t, dt) {
 // =====================================================================================
 const FLY_N = 48, GULL_N = 9;
 const mr = (a, b) => a + (b - a) * Math.random();   // runtime randomness (keeps the seeded layout RNG untouched)
+const GULL_GREY = '#a2aab3', GULL_UNDER = '#eef0f1', GULL_TIP = '#16171a';
 const flyBodyGeo = mergeColored([
   [xform(new THREE.SphereGeometry(1, 10, 7), 0, 0, 0, 0, 0, 0, 0.1, 0.09, 0.24), '#ffffff'],
+  [xform(new THREE.SphereGeometry(1, 10, 7), 0, 0.03, -0.05, 0, 0, 0, 0.088, 0.065, 0.19), GULL_GREY],   // grey mantle on the back
   [xform(new THREE.SphereGeometry(0.065, 8, 6), 0, 0.07, 0.2), '#ffffff'],
   [xform(new THREE.ConeGeometry(0.018, 0.08, 5), 0, 0.06, 0.29, Math.PI / 2, 0, 0), '#e8b030'],
-  [xform(boxG(0.12, 0.02, 0.14), 0, 0.01, -0.27), '#c9ced4'],
+  [xform(boxG(0.12, 0.02, 0.14), 0, 0.01, -0.27), '#f4f5f6'],
   [xform(cylG(0.008, 0.008, 0.12, 4), 0.03, -0.11, 0), '#c98a5a'], [xform(cylG(0.008, 0.008, 0.12, 4), -0.03, -0.11, 0), '#c98a5a']]);
-const flyWingGeo = (() => {   // right wing, shoulder at the origin, tapering and swept back, dark tip
-  const g = new THREE.BoxGeometry(0.5, 0.012, 0.16, 4, 1, 1); g.translate(0.25, 0, 0); const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) { const x = p.getX(i); p.setZ(i, p.getZ(i) * (1 - 0.55 * smooth(0.15, 0.5, x)) - x * 0.12); }
-  g.computeVertexNormals(); const pg = prep(g, '#b9c0c8'); const c = pg.attributes.color, pp = pg.attributes.position;
-  for (let i = 0; i < pp.count; i++) if (pp.getX(i) > 0.4) c.setXYZ(i, 0.08, 0.08, 0.09);
-  return pg; })();
-const flyWingGeoL = flyWingGeo.clone().applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1));
+// right wing in two parts (arm and hand), shoulder or wrist at the origin, pointing +x. Grey on top, white
+// underneath, black only at the tip. `shape(x)` gives [chord, sweep back, thickness] along the span.
+function gullWingPart(len, shape, tipFrom) {
+  const g = new THREE.BoxGeometry(len, 1, 1, 6, 1, 1); g.translate(len / 2, 0, 0); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), [c, sw, th] = shape(x / len); p.setXYZ(i, x, p.getY(i) * th, (p.getZ(i) + 0.15) * c - sw); }
+  g.computeVertexNormals(); const pg = prep(g, GULL_GREY), col = pg.attributes.color, pp = pg.attributes.position, nn = pg.attributes.normal;
+  for (let i = 0; i < pp.count; i++) {
+    if (pp.getX(i) > tipFrom) _c.set(GULL_TIP); else if (nn.getY(i) < 0.3) _c.set(GULL_UNDER); else _c.set(GULL_GREY);
+    col.setXYZ(i, _c.r, _c.g, _c.b); }
+  return pg;
+}
+// mirror to the left side; mirroring flips the triangle winding, so swap two corners of every triangle back,
+// or DoubleSide lighting flips the (already correct) normals and the wing renders black
+function mirrorWing(g) {
+  const m = g.clone().applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1));
+  for (const a of Object.values(m.attributes)) for (let t = 0; t < a.count; t += 3) for (let k = 0; k < a.itemSize; k++) {
+    const v = a.array[(t + 1) * a.itemSize + k]; a.array[(t + 1) * a.itemSize + k] = a.array[(t + 2) * a.itemSize + k]; a.array[(t + 2) * a.itemSize + k] = v; }
+  return m;
+}
+const WING_IN = 0.24;
+const flyWingIn = gullWingPart(WING_IN, (u) => [0.19 - 0.03 * u, 0.02 * u, 0.02 - 0.006 * u], 9);
+const flyWingOut = gullWingPart(0.34, (u) => [0.16 * (1 - 0.78 * u * u), 0.03 + 0.2 * u * u + 0.04 * u, 0.014 - 0.008 * u], 0.19);
 const flyMat = vcol({ roughness: 0.8, side: THREE.DoubleSide });
-const FLYM = [flyBodyGeo, flyWingGeo, flyWingGeoL].map((g) => { const m = new THREE.InstancedMesh(g, flyMat, FLY_N); m.count = 0; m.frustumCulled = false; m.castShadow = true;
+// instanced meshes: body, right arm, right hand, left arm, left hand
+const FLYM = [flyBodyGeo, flyWingIn, flyWingOut, mirrorWing(flyWingIn), mirrorWing(flyWingOut)].map((g) => { const m = new THREE.InstancedMesh(g, flyMat, FLY_N); m.count = 0; m.frustumCulled = false; m.castShadow = true;
   m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FLY_N * 3).fill(1), 3); scene.add(m); return m; });
 const FLY = []; for (let i = 0; i < FLY_N; i++) FLY.push({ on: false, kind: 'gull', state: 'soar', p: new THREE.Vector3(), v: new THREE.Vector3(), tgt: new THREE.Vector3(), perch: null, t: 0, ph: Math.random() * 6, s: 1, yaw: 0, bank: 0, flap: 1 });
 function newFlier(kind) { const f = FLY.find((b) => !b.on); if (!f) return null; Object.assign(f, { on: true, kind, perch: null, t: 0, s: kind === 'gull' ? mr(0.95, 1.1) : mr(0.62, 0.72), flap: 1 }); return f; }
@@ -1688,7 +1707,7 @@ function pickPerch() {   // a free landing spot ahead of the camera (reservoir s
   for (const c of chunks) if (c.perches) for (const p of c.perches) if (!p.busy && !p.dead && p.z < cz - 20 && p.z > cz - 140 && Math.random() * ++n < 1) pick = p;
   return pick;
 }
-const _fd = new THREE.Vector3(), _fq = new THREE.Quaternion(), _fe = new THREE.Euler(), _fm = new THREE.Matrix4(), _wm = new THREE.Matrix4(), _fs = new THREE.Vector3(), _wo = new THREE.Vector3(), _wq = new THREE.Quaternion(), _we = new THREE.Euler();
+const _fd = new THREE.Vector3(), _fq = new THREE.Quaternion(), _fe = new THREE.Euler(), _fm = new THREE.Matrix4(), _wm = new THREE.Matrix4(), _fs = new THREE.Vector3(), _wo = new THREE.Vector3(), _wq = new THREE.Quaternion(), _we = new THREE.Euler(), _lw = new THREE.Matrix4();
 function steer(f, speed, turn, dt) { _fd.subVectors(f.tgt, f.p); const d = _fd.length(); _fd.multiplyScalar(speed / Math.max(d, 1e-3)); f.v.lerp(_fd, 1 - Math.exp(-dt * turn)); return d; }
 function updateFliers(dt, t) {
   const cz = camera.position.z; let gulls = 0;
@@ -1721,10 +1740,19 @@ function updateFliers(dt, t) {
     f.flap = lerp(f.flap, flapping ? 1 : 0, 1 - Math.exp(-dt * 6)); f.ph += dt * lerp(4, f.state === 'flee' ? 20 : 13, f.flap);
     _fe.set(pitch, f.yaw, f.state === 'perch' ? 0 : f.bank, 'YXZ'); _fq.setFromEuler(_fe); _fm.compose(f.p, _fq, _fs.setScalar(f.s));
     FLYM[0].setMatrixAt(n, _fm);
-    for (let w = 0; w < 2; w++) { const side = w ? -1 : 1;   // instance mesh 1 = right wing, 2 = left wing
-      if (f.state === 'perch') { _we.set(0, side * 1.35, -side * 0.25, 'YXZ'); _fs.setScalar(0.55); }
-      else { const a = f.flap * Math.sin(f.ph) * 0.95 + (1 - f.flap) * (0.1 + Math.sin(t * 0.8 + f.ph) * 0.05) + 0.08; _we.set(0, 0, side * a); _fs.setScalar(1); }
-      _wq.setFromEuler(_we); _wm.compose(_wo.set(side * 0.07, 0.035, 0.03), _wq, _fs); FLYM[1 + w].setMatrixAt(n, _wm.premultiply(_fm)); }
+    // wings: arm (dihedral a, sweep) and hand (bend b, lagging the stroke). Gliding holds the gull's crooked
+    // "M" (arm up, hand down and swept back); perched, both parts fold back along the body.
+    let a, b, sweep, handSweep, sc = 1;
+    if (f.state === 'perch') { a = -0.15; b = 0; sweep = 1.42; handSweep = 0.12; sc = 0.62; }
+    else { const fl = f.flap, ph = f.ph, glide = Math.sin(t * 0.8 + f.ph) * 0.04;
+      a = fl * Math.sin(ph) * 0.8 + (1 - fl) * (0.2 + glide) + 0.04;
+      b = fl * Math.sin(ph - 0.7) * 0.55 + (1 - fl) * (-0.38 - glide);
+      sweep = 0.08 + fl * Math.cos(ph) * 0.12; handSweep = 0.3 - fl * 0.12 + fl * Math.cos(ph) * 0.15; }
+    for (let w = 0; w < 2; w++) { const side = w ? -1 : 1;
+      _we.set(0, side * sweep, side * a, 'YXZ'); _wq.setFromEuler(_we); _wm.compose(_wo.set(side * 0.07, 0.035, 0.03), _wq, _fs.setScalar(sc)).premultiply(_fm);
+      FLYM[1 + w * 2].setMatrixAt(n, _wm);
+      _we.set(0, side * handSweep, side * b, 'YXZ'); _wq.setFromEuler(_we); _lw.compose(_wo.set(side * WING_IN, 0, 0), _wq, _fs.setScalar(1)).premultiply(_wm);
+      FLYM[2 + w * 2].setMatrixAt(n, _lw); }
     const shade = f.kind === 'gull' ? 1 : 0.55; for (const m of FLYM) m.instanceColor.setXYZ(n, shade, shade * 1.03, shade * 1.08);
     n++;
   }
