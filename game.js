@@ -447,29 +447,38 @@ export function createGame(ctx) {
   // skater box overlaps it; carving to the next lane takes carveTime and occupies both lanes meanwhile. Returns the
   // first move of the cheapest path and its cost (≥ 1e6 = every path runs into something solid: a trap).
   function botPlan(v, lanes) {
-    const dtp = 0.1, H = 4, steps = Math.round(H / dtp), m = Math.max(1, Math.ceil(carveTime(v) / dtp)), N = LANE_X.length;
+    const dtp = 0.05, H = 4, steps = Math.round(H / dtp), m = Math.max(1, Math.ceil(carveTime(v) / dtp)), N = LANE_X.length;
     const canFull = st.energy >= EN.ollieMax || st.mode !== 'playing';
     const occ = lanes.map((cells) => { const a = new Float64Array(steps + 1);
       for (const c of cells) { const s0 = Math.max(0, Math.floor((c.d - 0.1) / v / dtp)), s1 = Math.min(steps, Math.ceil((c.d + c.depth + SKB.d + 0.1) / v / dtp));
-        const k = c.kind === 'solid' || (c.kind === 'jump' && !canFull) ? 1e6 : c.kind === 'jump' ? 30 : 8; for (let s = s0; s <= s1; s++) a[s] = Math.max(a[s], k); }
+        // a collision costs ≥ 1e6, more the sooner it comes, so the plan always deals with the nearest row first
+        const solid = c.kind === 'solid' || (c.kind === 'jump' && !canFull);
+        for (let s = s0; s <= s1; s++) a[s] = Math.max(a[s], solid ? 1e6 * (2 - s / steps) : c.kind === 'jump' ? 30 : 8); }
       return a; });
-    const physical = clamp(Math.round((sk.x - LANE_X[0]) / L.width), 0, N - 1), startDelay = Math.round(Math.abs(sk.toX - sk.x) / Math.max(sk.speed * L.carveRatio, 0.5) / dtp);
+    // start in the lane the skater is heading for; if mid-carve, the lane being left still counts until the
+    // skater box is clear of it (0.55 m from its centre), which is much sooner than arriving in the new lane
+    const vlat = Math.max(sk.speed * L.carveRatio, L.width / L.carveMax);
+    const physical = clamp(Math.round((sk.x - LANE_X[0]) / L.width), 0, N - 1), tClear = physical === sk.lane ? 0 : Math.max(0, 0.55 - Math.abs(sk.x - LANE_X[physical])) / vlat;
     const dp = Array.from({ length: steps + 1 }, () => new Float64Array(N).fill(Infinity)), first = Array.from({ length: steps + 1 }, () => new Int8Array(N));
-    let c0 = 0; for (let s = 0; s <= Math.min(startDelay, steps); s++) c0 += Math.max(occ[sk.lane][s], occ[physical][s]);
-    const s0 = Math.min(startDelay, steps); dp[s0][sk.lane] = c0; first[s0][sk.lane] = 0;
+    let c0 = occ[sk.lane][0]; const nClear = Math.ceil(tClear / dtp);
+    const extra = (s) => (s <= nClear ? occ[physical][s] : 0);   // the lane still being left
+    const s0 = 0; dp[0][sk.lane] = Math.max(c0, extra(0)); first[0][sk.lane] = 0;
     for (let s = s0; s < steps; s++) for (let l = 0; l < N; l++) { const c = dp[s][l]; if (c === Infinity) continue;
-      const stay = c + occ[l][s + 1]; if (stay < dp[s + 1][l]) { dp[s + 1][l] = stay; first[s + 1][l] = s === s0 ? 0 : first[s][l]; }
-      for (const d of [-1, 1]) { const n = l + d; if (n < 0 || n >= N) continue; const e = Math.min(steps, s + m); let mc = c;
-        for (let k = s + 1; k <= e; k++) mc += Math.max(occ[l][k], occ[n][k]); mc += 2;   // small cost per move: don't weave for nothing
+      const stay = c + Math.max(occ[l][s + 1], extra(s + 1)); if (stay < dp[s + 1][l]) { dp[s + 1][l] = stay; first[s + 1][l] = s === s0 ? 0 : first[s][l]; }
+      // a carve: the box is in the old lane for the first ~60% of it and in the new one for the last ~60%
+      for (const d of [-1, 1]) { const n = l + d; if (n < 0 || n >= N) continue; const e = Math.min(steps, s + m), leave = s + Math.ceil(m * 0.6), enter = s + Math.floor(m * 0.4); let mc = c;
+        for (let k = s + 1; k <= e; k++) mc += Math.max(k <= leave ? occ[l][k] : 0, k >= enter ? occ[n][k] : 0, extra(k)); mc += 2;   // small cost per move: don't weave for nothing
         if (mc < dp[e][n]) { dp[e][n] = mc; first[e][n] = s === s0 ? d : first[s][l]; } } }
     let best = Infinity, move = 0; for (let l = 0; l < N; l++) if (dp[steps][l] < best) { best = dp[steps][l]; move = first[steps][l]; }
-    return { cost: best, move };
+    // trapped = even the best path can't avoid a collision within the time it takes to carve across every lane
+    const tTrap = Math.min(steps, Math.ceil(((N - 1) * carveTime(v) + 0.4) / dtp)); let trapC = Infinity; for (let l = 0; l < N; l++) trapC = Math.min(trapC, dp[tTrap][l]);
+    return { cost: best, move, trapped: trapC >= 1e6 };
   }
   function autopilot() {
     if (st.mode === 'title') { startGame(); bot.runs++; return; }
     if (st.mode === 'over') { if (st.overT > G.overDelay + 0.5) { startGame(); bot.runs++; } return; }
     const v = Math.max(sk.speed, 1), lanes = botCells(v, v * 4 + 4), plan = botPlan(v, lanes);
-    if (plan.cost >= 1e6 && Math.abs(S.z - bot.lastTrapZ) > 15) { bot.trapped++; bot.lastTrapZ = S.z;
+    if (plan.trapped && Math.abs(S.z - bot.lastTrapZ) > 15) { bot.trapped++; bot.lastTrapZ = S.z;
       if (bot.trapLog.length < 20) bot.trapLog.push({ dist: Math.round(st.dist), stage: stage(), lane: sk.lane, x: +sk.x.toFixed(2), energy: Math.round(st.energy), lanes: lanes.map((c) => c.map((x) => `${x.kind}@${x.d.toFixed(1)}`).join(' ')) }); }
     if (plan.move && !sk.queue.length && sk.chT < 0) pressLane(plan.move);
     // jumps: a full ollie timed so the apex is over a jumpable, a quick hop over a slip hazard

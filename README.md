@@ -31,8 +31,9 @@ Debug keys:
 | Key | Action |
 |---|---|
 | 1–4 | Jump to a lighting phase: sunny midday, golden hour, marine-layer fog, blue hour |
-| P | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
-| H | Draw the collision boxes (cyan = skater, red = solid, orange = jumpable, yellow = slip) |
+| L | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| P | Autopilot: a bot plays the game (shown as AUTOPILOT at the top) |
+| H | Draw the collision boxes (cyan = skater, red = solid, orange = jumpable, yellow = slip), including each part of a dog-walker pair |
 | C | Switch between the chase camera and an eye-level (1.7 m) camera |
 | O | Turn ambient occlusion (GTAO) on or off |
 
@@ -47,20 +48,27 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
 - **Energy**: every jump costs 8–40 depending on how high you go (the trick comes with the height). It refills at
   6 per second. A big jump with too little energy is cut down to what you can afford, so you get a lower trick. While you hold jump, the dark end of the bar shows what the
   jump will cost. With no energy you can't jump.
-- **People in the lanes:** walkers (some with a dog out front on a lead), cyclists and skaters riding with you or
-  toward you, and influencers stopped for a selfie. You can't jump any of them, so change lane. Now and then a
-  cyclist or skater also **rides across** the boardwalk.
-- **People sitting on the ground:** someone asking for change, someone smoking, and drum circles. They sit
-  just off the lanes and in the outer two lanes. You can't jump the ones in a lane.
+- **Walkers** go both ways. Some stop for a moment, some drift over into the next lane.
+- **Cyclists** and **other skaters** ride with you or toward you. Some skaters change lane, leaning for half a
+  second first so you can see it coming. Now and then a cyclist or skater also **rides across** the boardwalk.
+- **Influencers** stand or back up slowly with their phone held up; their camera flashes as you pass close.
+- **Dog walkers:** the owner in one lane and the dog in the next, with the red lead between them. A short-to-medium
+  ollie clears the dog and the lead; the owner can't be jumped.
+- **Buskers:** a guitarist, drummer or keyboard player on a rug in an outer lane, with a few people watching. The
+  rug marks the whole footprint; it can't be jumped.
+- You can't jump walkers, riders or influencers either, so change lane.
 - **Knocked-over trash cans** and **cone groups** can be jumped, but they need a fairly well-charged ollie.
-- **Pizza** and **dog poop** make you slip: you keep your health but lose speed and your combo. Jump them, or hit
-  jump within 0.1 s of touching one to get away clean.
+- **Pizza** and **dog poop** make you slip: you lose 10 health and some speed. Jump them, or hit jump within 0.1 s
+  of touching one to get away clean.
+- People sitting at the sides (asking for change, smoking, drum circles) are scenery and never in your way.
 - At top speed a full charge takes about 5 m of travel, so start holding jump early for cans and cones.
 
 Score: 1 point per metre (the HUD shows the distance in feet). A jump is worth 25–100 depending on its height,
-plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossible 400. A jump that clears an obstacle scores double, plus 75 for the clear. Each landing multiplies by your combo
-(×2, ×3 … up to ×8). The combo grows with every landed jump and resets when you slip, wipe out or get hit, or after
-3 s on the ground without a jump. The best score is saved in the browser.
+plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossible 400. A jump that clears an
+obstacle scores double, plus 75 for the clear. A **close call** (passing within 0.45 m of an obstacle, or clearing
+a jumpable with under 0.15 m to spare) scores 60. Landings and close calls multiply by your combo (×2, ×3 … up to
+×8), and each one adds to it. The combo resets only when you get hit or wipe out. Speed builds only while you ride
+clean: a hit costs half the speed you've built up, a slip or wipeout 20%. The best score is saved in the browser.
 
 Around you, pigeons and gulls on the ground take off as you ride up to them. A seagull flock wanders the sky and
 lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off again.
@@ -68,8 +76,10 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 ## Files
 
 - `venice-boardwalk.html` — the scene (one ES module), plus the `GAME` tuning object near the top.
-- `game.js` — the game loop: states, input, lanes, jump/trick state machine, health and energy, obstacle and
-  crossing-traffic spawning, collisions, score and HUD (imported dynamically).
+- `game.js` — the game loop: states, input, lanes, jump/trick state machine, health and energy, obstacle behaviours,
+  collisions, close calls, score, HUD and the autopilot (imported dynamically).
+- `director.js` — the spawn director: obstacle patterns by difficulty stage and the validator that rejects any
+  pattern without a way through.
 - `characters.js` — the rigged crowd, skater, cyclists and dogs (imported dynamically; if it fails to load, the scene
   falls back to the old block figures).
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
@@ -126,8 +136,9 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - **Tuning:** every gameplay number is in the `GAME` object near the top of `venice-boardwalk.html`. That covers the
   speed ramp (`speed.start`, `ramp`, `max`), lane carves (`lanes.carveRatio`, `carveMin`, `carveMax`, `recoverTime`, `lean`), the jump
   (`jump.minHeight`, `maxHeight`, `chargeTime`, `gravity`, `coyote`), tricks (`tricks.ollieBelow`, `order`,
-  `durShare`, points), `energy` and `health`, spawn gaps and crossing traffic (`spawn.minGap`, `reaction`,
-  `gapJitter`, `rampDist`, weights, `crossEvery`, crossing speeds), the hitbox sizes and the score values.
+  `durShare`, points), `energy` and `health`, `obstacles` (hitbox sizes and jump clearances), `spawn` (row
+  spacing, mover speeds, the skater lane-change telegraph, flash distance, crossing traffic), `director` (stages,
+  pattern weights, gap slack, behaviour shares), and `score` (including `nearMiss`, `nearDist`, `nearJump`).
 - **Timing:** everything runs on delta time. Delta is clamped to 50 ms, and the clock ignores time while the tab is
   hidden. The world (lighting cycle, crowd, skater) stands still while paused.
 - **Jump:** the arc is a real parabola under `jump.gravity`; how long you hold the key sets the apex between
@@ -136,18 +147,25 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   range is split evenly between the five tricks in `tricks.order`, and each trick takes `durShare` of that jump's air
   time, so it always lands clean. The heelflip spins the other way, the hardflip adds a half shove-it and a vertical
   flip, the 360 flip adds a full shove-it, and the impossible wraps the board end over end around the back truck.
-- **Crossing traffic:** every 14–30 s a row slot is given to a cyclist or skater riding across the boardwalk at a
-  steady speed, timed to be over the lanes when you arrive. They use the rigged crowd: the cyclist rides one of the
-  procedural bikes, and the skater rides their own board with feet planted by IK.
-- **Fair spawning:** obstacles come in rows. Every row leaves at least one lane completely open. The gap between
-  rows is at least speed × (reaction time + three lane slides + recovery), so there is always time to reach the open
-  lane. Pedestrians are placed so they reach their row exactly when the skater does, whichever way they walk.
-  Obstacles ramp up steadily with distance over `spawn.rampDist` (1,500 m, about 4,900 ft): rows block more lanes
-  and the random slack between rows shrinks, but never below that reach-the-open-lane minimum. In testing,
-  density went from about 4 obstacles per 100 m at the start to 5 at 800 m and 7 at full difficulty. The weights give
-  70% people and 30% objects (cans, cones, pizza, poop).
-- **Collisions:** boxes per obstacle type, sized to the lanes. They never use the visual meshes. Jumpable and slip
-  obstacles are passed when the board is higher than the obstacle's `clear` value.
+- **Spawn director** (director.js): obstacles come as patterns: a single blocker, a pair, a triple (one lane left
+  open), a hazard line with a jumpable in its gap, a busker on one side with walkers on the other, a dog walker
+  across two lanes, or a crossing rider. Five stages by distance (`director.stages`, from 0 / 250 / 600 / 1,000 /
+  1,600 m) unlock types and patterns, shrink the slack between rows and speed up the movers. Before a pattern is
+  placed, the validator turns it into per-lane cells and checks that at least one lane can be ridden straight
+  through at the current speed: no solids, every jump clearable with a full ollie, and room to land between jumps.
+  Drifting walkers and lane-changing skaters count as blocking both lanes. Rejected patterns are logged to the
+  console and re-rolled. Rows are never closer than speed × (reaction + three lane carves + recovery), so the open
+  lane is always reachable. Movers are placed so they reach their row exactly when the skater does.
+- **Autopilot** (P): the bot reads only the hitboxes and plays with the same carve and jump. It plans with dynamic
+  programming over 0.05 s steps and the four lanes, 4 s ahead (collisions cost more the sooner they come), and logs
+  a "trap" whenever no plan avoids a collision within the time to carve across every lane. In headless tests (5–10
+  simulated minutes per stage, up to the 32 m/s cap) it took no hits; the only trap entries were two late reactions
+  at 32 m/s with a free lane alongside, both escaped. `__vb.game.botReport()` returns obstacles per minute, hits,
+  traps and pattern counts.
+- **Collisions:** each obstacle has one or more hitbox parts (a dog walker has three: owner, lead, dog). They never
+  use the visual meshes, and are checked in sub-steps of ≤ 0.3 m so a fast frame can't skip one. Jumpable and slip
+  parts are passed when the board is higher than their `clear` value. A hit freezes the action for 0.07 s and shakes
+  the camera.
 - **Skater animation:** the free animation library has no skating clips (the 43 clip names are logged to the
   console at load). So game.js writes a pose each frame (`S.pose`: air, pitch, kickflip roll, crouch, lean,
   foot flick, arm flail, board kicked out), and characters.js turns it into bone edits after `mixer.update()`.
@@ -167,8 +185,7 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   `crowd.sideWalkers` thins the rest of the side crowd.
 - **People:** all people obstacles use the rigged crowd and get a rig before anyone else. Walkers and riders moving
   along a lane are placed so they reach their row exactly when you do. Same-way riders are always slower than you,
-  so you can catch them. Rows pick the lanes that have had the fewest people so far (with some shuffle), so people
-  spread evenly across the four lanes. The off-lane crowd (walkers, ambient cyclists, sitters, performers) is
+  so you can catch them. About 70% of blockers are people (`director.peopleShare`). The off-lane crowd (walkers, ambient cyclists, sitters, performers) is
   thinned by `crowd.sideWalkers` (0.015) so each side strip holds about as many people as each lane. Set it to 1
   for the full phase 1 crowd. The ambient crowd,
   performers and selfie-takers stay outside the four lanes (|x| > 4.3 m). Edge scenery never collides.
@@ -183,7 +200,9 @@ device detection, and add touch input next to the existing `keydown` handler.
 
 `window.__vb` in the console:
 
-- `game` — the game object (`start()`, `kill()`, `st`, `sk`, `OBS`, `spawnObstacle(type, lane, z)`).
+- `game` — the game object (`start()`, `kill()`, `st`, `sk`, `OBS`, `spawnObstacle(type, lane, z, opt)`,
+  `setAutopilot(on)`, `botReport()`, `director`). `game.st.stageLock = n` pins a difficulty stage for testing.
+- `noRender` — skip rendering, so `tick(n, dt)` simulates quickly (used for the headless autopilot tests).
 - `timeScale` — slow motion (for example `0.05`) for checking animation.
 - `shot('ref1')` … `shot('ref6')` — set the camera and phase to match each reference photo.
 - `bench(30)` — milliseconds per frame without rAF timing (it forces a GPU sync).
