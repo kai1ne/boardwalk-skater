@@ -41,11 +41,32 @@ provenance (that folder isn't loaded at runtime and can be deleted). The UAL roo
 offline only, to measure stride speeds.
 
 **Bicycles:** I found no CC0 rigged or static bicycle. Every Poly Pizza bicycle I checked was CC-BY 3.0, so the
-bikes are a procedural placeholder in `characters.js`. Clothing, the skateboard, the phone, towels, the speaker,
+bikes are a procedural placeholder in `characters.js`. The skateboard, the phone, towels, the speaker,
 the tip hat and the dog leads are procedural too. The phase 2 obstacles are procedural or reuse the scene's own
 props: knocked-over trash cans and cone groups reuse the scenery meshes, and the pizza box, slices, grease streak and
 dog poop are built in `game.js`. The flying pigeons and seagulls, the crossing skaters' boards, and the djembes, cups, cardboard
 signs, cigarettes and smoke puffs are procedural too. No new asset files were added in phase 2.
+
+## Skin tones — Monk Skin Tone Scale (CC BY 4.0)
+
+The 10 skin tones come from the **Monk Skin Tone (MST) Scale** by Dr. Ellis Monk, released by Google under
+CC BY 4.0 (https://skintone.google). The ten published hex values are in `MST` in `characters.js` and are mapped
+to render albedo there (log luminance curve plus per-tone saturation); the attribution is given here as the
+licence requires.
+
+## Phase 3.5 clothing notes
+
+- All clothing is procedural (`outfits.js`): shells cut from the CC0 base body plus simple rigid parts. No
+  clothing asset files were added.
+- The Quaternius Universal Base Characters free tier only has the two Superhero bodies. The Regular bodies are in
+  the paid Source tier and weren't downloaded, so the slim, everyday and fuller builds are derived from the
+  Superhero meshes in code.
+- The Quaternius modular outfit pack wasn't used: it's medieval fantasy and only two outfits are free.
+- The kit has no curly, afro or locs hairstyles. Buzzed, BuzzedFemale and Buns are used as the closest fits for
+  tightly curled hair.
+- Licence caveat: both official Quaternius pages and the bundled licence files say CC0. One third-party guide
+  claims newer Quaternius releases moved to a custom licence; I couldn't confirm that, and the files shipped
+  here carry CC0 licence files.
 
 ## Procedural (canvas-generated, original)
 

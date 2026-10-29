@@ -116,10 +116,24 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   body's leg length.
 - **No foot sliding:** walk speed = root-motion stride (measured from the `_RM` file: 0.975 m/s for Walk_Loop)
   × leg ratio × timeScale × body scale. Couples share the leader's speed and adjust their own timeScale to match.
-- **Variety:** 20 appearances per body (6 skin tones, tops, bottoms, shoes, swimwear, 6 hairstyles plus beards,
-  8 hair colours). Each one is a shared material made once. Clothes are painted onto the base bodies in a shader,
-  using bind-pose (T-pose) bands measured from the bones, and pushed out a few mm for thickness. Height and build
-  vary through slight non-uniform scale.
+- **Appearance (phase 3.5):** 20 seeded appearance recipes per body, made once and shared (`makeAppearance` in
+  characters.js). Skin uses the 10-tone Monk Skin Tone scale, mapped to albedo on a log luminance curve so the
+  tones stay natural in all four lighting phases. The final colour is the target × the texture's own luminance,
+  so the face and hand detail survives. Hair, brows, eyes and clothing have their own materials. Hair is a
+  luminance-tinted natural range (very dark through grey), and the irises are re-coloured (brown, hazel, green,
+  blue, grey). Four builds come from the same mesh (everyday, slim, fuller, plus the original superhero body
+  at 8%), derived in bind pose so the vertex count and skin weights don't change.
+- **Clothing (outfits.js):** garments are real shells cut from the body surface by bind-pose region masks. They
+  are smoothed, pushed out along normals (tops are thicker than bottoms so nothing z-fights), keep the body's
+  skin weights, and get their hems snapped to a clean line. The body shader discards any skin under a garment
+  using the same masks inset slightly, so nothing pokes through. Hoods, skirts, caps, sunglasses, backpacks and
+  pouches are rigid parts weighted to bones. Each appearance's outfit is one merged, vertex-coloured
+  `SkinnedMesh` bound to the body skeleton. Skirts are rigid, so seated kinds (sitters, drummers, cyclists,
+  skaters) never get one. The three performers have their own fixed outfits, and the player's look is a fixed
+  recipe, which makes a title-screen character choice a matter of offering a few recipes.
+- **LOD:** each body and outfit has a simplified version (SimplifyModifier: about 12.6K → 5.1K triangles) used
+  past 12 m, with hysteresis out to 13.5 m so rigs don't flicker between levels. The lineup and the player always
+  use full detail.
 - **Budget:** 24 pooled `SkinnedMesh` rigs per body, cloned with `SkeletonUtils.clone`, each with one
   `AnimationMixer`. They go to the nearest visible agents and are re-sorted 5 times a second. The nearest 30
   animate every frame and the rest every 3rd frame (staggered). Only rigs within 30 m cast shadows, eyes and brows

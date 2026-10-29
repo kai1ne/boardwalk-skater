@@ -364,7 +364,7 @@ export async function createCharacters(ctx) {
     setApp(a) {
       this.app = a; this.body.material = a.mat; if (this.brows) this.brows.material = a.browMat; if (this.eyes && a.eyeMat) this.eyes.material = a.eyeMat;
       const v = a.variant || this.B.variants.super; this.body.geometry = this.lodFull === false ? v.geoLow : v.geoFull;
-      this.hair.visible = !!a.hair; if (a.hair) { this.hair.geometry = HAIR_GEO[a.hair]; this.hair.material = a.hairMat; }
+      this.hair.visible = !!a.hair && !a.cap; if (a.hair) { this.hair.geometry = HAIR_GEO[a.hair]; this.hair.material = a.hairMat; }   // close-cropped hair sits under a cap
       this.beard.visible = !!a.beard; if (a.beard) this.beard.material = a.hairMat;
       this.showOutfit();
     }

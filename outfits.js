@@ -190,8 +190,8 @@ export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
       const y0 = l0.z + 0.06, y1 = l0.y + 0.07, pts = []; for (let i = 0; i <= 6; i++) { const t = i / 6; pts.push(new THREE.Vector2(mix(0.165, 0.165 + flare, Math.pow(t, 1.3)), mix(y0, y1, t))); }
       const g = new THREE.LatheGeometry(pts.reverse(), 24); g.scale(1.12, 1, 0.92);
       return rigid(g, 'pelvis', color, (x, y) => [x > 0 ? 'thigh_l' : 'thigh_r', 0.45 * smoothstep(y0, y1, y) * Math.min(1, Math.abs(x) / 0.12)]); },
-    cap(color) { const top = new THREE.SphereGeometry(0.106, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2); top.scale(1, 0.62, 1.1); top.translate(0, headTop - 0.075, head.z - 0.01);
-      const brim = new THREE.CylinderGeometry(0.085, 0.085, 0.008, 16, 1, false, -Math.PI / 2, Math.PI); brim.scale(1, 1, 1.25); brim.rotateX(0.12); brim.translate(0, headTop - 0.072, head.z + 0.075);   // a peak that sticks out in front
+    cap(color) { const top = new THREE.SphereGeometry(0.106, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2); top.scale(1, 0.7, 1.1); top.translate(0, headTop - 0.068, head.z - 0.01);
+      const brim = new THREE.CylinderGeometry(0.085, 0.085, 0.008, 16, 1, false, -Math.PI / 2, Math.PI); brim.scale(1, 1, 1.25); brim.rotateX(0.12); brim.translate(0, headTop - 0.066, head.z + 0.075);   // a peak that sticks out in front
       return rigid(mergeGeometries([top.toNonIndexed(), brim.toNonIndexed()].map((g) => { g.deleteAttribute('uv'); return g; })), 'Head', color); },
     sunglasses() { const ey = eyesBox ? (eyesBox.min.y + eyesBox.max.y) / 2 : head.y + 0.07, ez = eyesBox ? eyesBox.max.z + 0.012 : head.z + 0.1, parts = [];
       for (const s of [-1, 1]) { parts.push(new THREE.CylinderGeometry(0.019, 0.019, 0.004, 14).rotateX(Math.PI / 2).scale(1.2, 0.85, 1).translate(s * 0.032, ey, ez),   // oval lenses
