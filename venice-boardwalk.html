@@ -105,7 +105,8 @@ const QUALITY = {
   desktop: { pixelRatioMax: 2, startPixelRatio: 1.25, adaptive: true, msaa: 4, shadowMapSize: 4096, shadowExtent: 48, gtao: true, gtaoScale: 0.5,
              bloom: true, chunks: 10, people: 280, envSize: 128,
              // rigged crowd: skinned rigs per body, how many animate every frame, LOD radii (m)
-             characters: { rigsPerSex: 24, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260, cyclists: 10, dogs: 6 } },
+             characters: { rigsPerSex: 24, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260, cyclists: 10, dogs: 6,
+                           lodNear: 12, lodFar: 13.5, lodReduce: 0.6 } },   // full body mesh within 12 m, reduced (60% fewer vertices) beyond 13.5 m
 };
 const Q = QUALITY[PLATFORM];
 

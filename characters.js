@@ -176,7 +176,7 @@ function makeAppearance(sex, i) {
 export async function createCharacters(ctx) {
   const { renderer, scene, camera, chunks, skater, S } = ctx;
   const Q = Object.assign({ rigsPerSex: 30, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260,
-    cyclists: 10, dogs: 6, appearances: 20, skaterDecimate: 0.55 }, ctx.Q || {});
+    cyclists: 10, dogs: 6, appearances: 20, skaterDecimate: 0.55, lodNear: 12, lodFar: 13.5, lodReduce: 0.6 }, ctx.Q || {});
   const loader = new GLTFLoader(), texLoader = new THREE.TextureLoader();
   const load = (u) => loader.loadAsync(BASE + u);
   const HAIR_FILES = ['Hair_Buzzed', 'Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale', 'Hair_Beard'];
@@ -236,6 +236,15 @@ export async function createCharacters(ctx) {
     return { sex, g, lm, k, clips, speed, height: boneY(root, 'Head') + 0.17, protoMat: mat, skinTex: [lightTex, mat.map], eyesMat: eyes && eyes.material };
   }
   const BODY = { M: prepBody(gM, 'M', texML), F: prepBody(gF, 'F', texFL) };
+  // detail LOD: a reduced body mesh per sex (meshoptimizer; skin weights carried over). Rigs use the full mesh within
+  // Q.lodNear metres and the reduced one beyond Q.lodFar (the gap is hysteresis, so nobody flickers between the two)
+  const simplifier = new SimplifyModifier();
+  for (const sex of ['M', 'F']) { let body; BODY[sex].g.scene.traverse((o) => { if (o.isSkinnedMesh && !/Eyes|Hair/.test(o.material.name)) body = o; });
+    const g0 = body.geometry; BODY[sex].geoFull = g0;
+    try { const c = g0.clone(); for (const n of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(n)) c.deleteAttribute(n);
+      const low = await simplifier.modify(c, Math.round(c.attributes.position.count * Q.lodReduce)); low.computeBoundingSphere(); BODY[sex].geoLow = low; c.dispose();
+      console.log('[characters] %s body LOD: %d → %d triangles', sex, g0.index.count / 3, low.index.count / 3);
+    } catch (err) { console.warn('[characters] body LOD failed, using the full mesh everywhere:', err); BODY[sex].geoLow = g0; } }
 
   // ---------------- hair: rigged-to-head meshes re-expressed in Head-bone space (static, no skinning) ----------------
   const HAIR_GEO = {}; const hairMat0 = {};
@@ -295,6 +304,7 @@ export async function createCharacters(ctx) {
     }
     setShadow(on) { if (this.shadow === on) return; this.shadow = on; this.body.castShadow = on; this.hair.castShadow = on; this.beard.castShadow = on; if (this.brows) this.brows.castShadow = false; }
     setDetail(near) { if (this.eyes) this.eyes.visible = near; if (this.brows) this.brows.visible = near; }
+    setLOD(full) { if (this.lodFull === full) return; this.lodFull = full; this.body.geometry = full ? this.B.geoFull : this.B.geoLow; }
     action(name) { let a = this.actions[name]; if (!a) a = this.actions[name] = this.mixer.clipAction(this.B.clips[name]); return a; }
     play(name, { fade = 0.3, time, ts = 1 } = {}) {
       const a = this.action(name);
@@ -705,7 +715,7 @@ export async function createCharacters(ctx) {
     let i = 0;
     for (let k = 0; k < 12; k++) for (const sex of ['M', 'F']) {
       const r = POOL[sex].find((x) => !x.lineup && (!x.agent || !x.agent.game)); if (!r) continue; if (r.agent) releaseRig(r);
-      r.lineup = true; const a = APPS[sex][k % APPS[sex].length]; r.setApp(a); r.setShadow(true); r.setDetail(true); r.phone.visible = false;
+      r.lineup = true; const a = APPS[sex][k % APPS[sex].length]; r.setApp(a); r.setShadow(true); r.setDetail(true); r.setLOD(true); r.phone.visible = false;
       const row = i < 12 ? 0 : 1, col = i % 12; r.wrap.scale.setScalar(1); r.wrap.position.set(cx + (col - 5.5) * 0.85 + row * 0.42, 0, cz - row * 2.2); r.wrap.rotation.set(0, 0, 0);
       r.snap(CLIP.idle, i * 0.37, 1); ensureInScene(r); LINEUP.rigs.push(r); i++;
     }
@@ -864,7 +874,7 @@ export async function createCharacters(ctx) {
     for (const a of cands) { const r = a.rig; if (!r) continue; stats.rigs++;
       placeRig(a);
       const near = rank++ < Q.nearCount && a.dist < Q.rFull + 10;
-      r.setShadow(a.dist < Q.shadowDist); r.setDetail(a.dist < 18);
+      r.setShadow(a.dist < Q.shadowDist); r.setDetail(a.dist < 18); r.setLOD(a.dist < (r.lodFull ? Q.lodFar : Q.lodNear));
       r.acc += dt;
       if (near || (tick + r.body.id) % Q.midEvery === 0) { if (a.kind === 'walk' && a.stopFor <= 0 && r.cur) r.cur.timeScale = a.ts; r.update(r.acc); r.acc = 0; stats.mixers++;
         if (a.kind === 'skate') { r.saveOverride(); cruise(a, r); }
