@@ -118,9 +118,9 @@ const GAME = {
            recoverTime: 0.3,               // s of counter-lean after a carve
            lean: 0.12, camRoll: 0.08 },    // body/board lean (rad) while sliding, and the share of it the camera rolls
   speed: { title: 4.5, start: 7.5,         // m/s on the title screen / at the start of a run
-           ramp: 0.22,                     // m/s gained per second of riding without damage (start → max in ~110 s)
+           ramp: 0.22,                     // m/s gained per second of riding without damage (start → max in ~255 s)
            hitRampKeep: 0.5, slipRampKeep: 0.8,   // share of the built-up speed kept after a hit / a slip or wipeout
-           max: 32,                        // m/s cap (~115 km/h)
+           max: 64,                        // m/s cap (~230 km/h)
            hitFactor: 0.55, slipFactor: 0.6, bailFactor: 0.7,    // speed multipliers on hit / slip / wipeout
            recoverRate: 2.2,               // m/s² back up to the ramped speed
            crashDecel: 9 },
@@ -150,6 +150,7 @@ const GAME = {
     bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null },   // cyclist riding along a lane
     skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null },   // skater cruising along a lane
     selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer, phone up
+    smokers:    { kind: 'solid', w: 1.3, h: 1.8, d: 1.2, clear: null },   // one to three people standing in a lane, smoking
     performer:  { kind: 'solid', w: 2.0, h: 1.8, d: 4.0, clear: null },   // busker + small crowd on a rug, outer lanes only
     dog:        { kind: 'solid', w: 0.7, h: 0.62, d: 0.7, clear: 0.35 },  // the dog end of a leash pair: a short-to-medium ollie clears it
     leashCord:  { kind: 'solid', w: 1.0, h: 1.0, d: 0.25, clear: 0.45 },  // the lead between owner and dog (w is set from the gap); jumpable. The owner can't be jumped
@@ -183,14 +184,14 @@ const GAME = {
     stages: [
       { from: 0,    types: ['ped', 'cones', 'can'], patterns: { single: 0.8, pair: 0.2 }, gap: [1.5, 1.9], moverScale: 0.8,
         pedStop: 0, pedDrift: 0, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
-      { from: 250,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike'], patterns: { single: 0.5, pair: 0.32, hazardLine: 0.18 }, gap: [1.3, 1.6], moverScale: 0.9,
+      { from: 250,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'smokers'], patterns: { single: 0.5, pair: 0.32, hazardLine: 0.18 }, gap: [1.3, 1.6], moverScale: 0.9,
         pedStop: 0.2, pedDrift: 0.1, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
-      { from: 600,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie'], patterns: { single: 0.32, pair: 0.3, triple: 0.06, hazardLine: 0.14, performerSide: 0.18 },
+      { from: 600,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers'], patterns: { single: 0.32, pair: 0.3, triple: 0.06, hazardLine: 0.14, performerSide: 0.18 },
         gap: [1.15, 1.4], moverScale: 1.0, pedStop: 0.25, pedDrift: 0.15, skaterChange: 0.3, selfieWalk: 0.3, leashPlus: 0 },
-      { from: 1000, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'leash', 'cross'],
+      { from: 1000, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross'],
         patterns: { single: 0.2, pair: 0.27, triple: 0.12, hazardLine: 0.1, performerSide: 0.12, leash: 0.14, cross: 0.05 }, gap: [1.05, 1.25], moverScale: 1.15,
         pedStop: 0.25, pedDrift: 0.2, skaterChange: 0.4, selfieWalk: 0.4, leashPlus: 0.3 },
-      { from: 1600, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'leash', 'cross'],
+      { from: 1600, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross'],
         patterns: { single: 0.12, pair: 0.3, triple: 0.2, hazardLine: 0.1, performerSide: 0.1, leash: 0.13, cross: 0.05 }, gap: [1.0, 1.1], moverScale: 1.3,
         pedStop: 0.3, pedDrift: 0.25, skaterChange: 0.5, selfieWalk: 0.4, leashPlus: 0.5 },
     ],
@@ -702,8 +703,6 @@ function makeDecals(seed, style) {
     c.strokeStyle = 'rgba(236,236,232,0.85)'; c.lineWidth = pm(0.13); const cx = px(rand(-1, 1)), cy = py(rand(10, 30)), s = pm(1.0);
     c.beginPath(); c.moveTo(cx - s, cy - s * 0.6); c.lineTo(cx + s, cy + s * 0.6); c.moveTo(cx + s, cy - s * 0.6); c.lineTo(cx - s, cy + s * 0.6); c.stroke();
   } else if (style === 'text') {
-    c.save(); c.translate(px(rand(-0.8, 0.8)), py(rand(14, 22))); c.rotate(-Math.PI / 2); c.scale(1, 1.1);
-    c.fillStyle = 'rgba(236,236,232,0.9)'; c.font = `bold ${pm(0.55)}px "Helvetica Neue", Arial`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('OCEAN  WALK', 0, 0); c.restore();
     c.save(); c.translate(px(3.4), py(rand(4, 10))); c.rotate(-Math.PI / 2); c.fillStyle = 'rgba(236,236,232,0.85)'; c.font = `bold ${pm(0.5)}px "Helvetica Neue", Arial`; c.textAlign = 'center'; c.fillText('SLOW', 0, 0); c.restore();
   }
   // occasional spray tags on pavers + white paint dashes at the paver edge (ref6)
@@ -1440,7 +1439,13 @@ class Chunk {
     // (always: they are kept even when crowd.sideWalkers thins the rest of the side crowd)
     const SEAT_Y = 0.03, sideX = () => chance(0.5) ? -rand(4.9, 5.5) : rand(5.0, 5.8), face = (x) => (x < 0 ? Math.PI / 2 : -Math.PI / 2);
     if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'beg', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x), seed: sid + 401, minCrowd: 0.05, always: true }); }
-    if (chance(0.45)) { const x = sideX(); this.stations.push({ t: 'smoke', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x) + rand(-0.4, 0.4), seed: sid + 411, minCrowd: 0.05, always: true }); }
+    if (chance(0.7)) { const x = sideX(); this.stations.push({ t: 'smoke', x, y: SEAT_Y, z: z0 - rand(4, 36), ry: face(x) + rand(-0.4, 0.4), seed: sid + 411, minCrowd: 0.05, always: true }); }
+    // smokers standing just off the lanes, and now and then a group of two to four smoking together
+    for (let k = 0; k < randi(1, 2); k++) { const x = chance(0.5) ? -rand(4.8, 6.4) : rand(4.9, 7.0);
+      this.stations.push({ t: 'smokeStand', x, y: 0, z: z0 - rand(2, 38), ry: face(x) + rand(-0.8, 0.8), seed: sid + 431 + k, minCrowd: 0.05, always: true }); }
+    if (chance(0.55)) { const right = chance(0.5), cx = right ? rand(5.4, 6.8) : -rand(5.3, 6.4), cz = z0 - rand(6, 34), n = randi(2, 4), a0 = rand(0, 6.28), rad = rand(0.5, 0.65);
+      for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2 + rand(-0.3, 0.3), x = cx + Math.sin(ang) * rad, z = cz + Math.cos(ang) * rad;
+        this.stations.push({ t: 'smokeStand', x, y: 0, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 441 + k, minCrowd: 0.05, always: true }); } }
     if (this.index % 3 === 1) { const right = chance(0.5), cx = right ? 6.9 : -10.6, cy = right ? 0 : -0.065, cz = z0 - rand(8, 32), n = randi(4, 6), a0 = rand(0, 6.28);
       for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2, x = cx + Math.sin(ang) * 1.15, z = cz + Math.cos(ang) * 1.15;
         this.stations.push({ t: 'drum', x, y: cy + SEAT_Y, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 421 + k, minCrowd: 0.05, always: true }); } }
@@ -1784,7 +1789,8 @@ const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
   if (game && game.keydown(e)) { e.preventDefault(); return; }
   if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
-  else if (e.key === 'j' || e.key === 'J') cyclePaused = !cyclePaused;   // P is the autopilot, L/K the character lineup
+  else if (e.key === 'g' || e.key === 'G') cyclePaused = !cyclePaused;   // P is the autopilot, L/K the character lineup, J the fit test
+  else if ((e.key === 'j' || e.key === 'J') && chars) setFit((FITV.mode + 1) % 3);
   else if ((e.key === 'l' || e.key === 'L') && chars) setLineup(!LINE.on);
   else if ((e.key === 'k' || e.key === 'K') && chars) { if (!LINE.on) setLineup(true); LINE.close = (LINE.close + 1) % (LINE.spots.length + 1); aimLineup(); }
   else if (e.key === 'o' || e.key === 'O') { if (gtaoPass) gtaoPass.enabled = !gtaoPass.enabled; }
@@ -1803,6 +1809,39 @@ function aimLineup() {
   // the lineup faces the sun (-z), so faces are lit; the camera stands on that side looking back at them
   if (!LINE.close) Object.assign(REF_POSE, { x: 0, y: 1.45, z: LINE.cz - 8.6, yaw: 180, pitch: -4, fov: 62 });
   else { const p = LINE.spots[LINE.close - 1]; Object.assign(REF_POSE, { x: p.x, y: 1.5, z: p.z - 2.0, yaw: 180, pitch: -3, fov: 38 }); }
+}
+// debug fit test (J): the game holds still and a slow camera orbits one character at shoulder height, 1.75 m out.
+// J once = the player cycling walk, idle, skate stance, ollie, kickflip, bail (2.6 s each); J again = a second
+// character in a hoodie (walk / idle); J again = off. __vb.fit.lockAngle (deg) / lockStep pin the view for screenshots.
+const FIT_STEPS = ['walk', 'idle', 'stance', 'ollie', 'kickflip', 'bail'];
+const _fitC = new THREE.Vector3(), FITV = { mode: 0, t: 0, step: -1, lockAngle: null, lockStep: null, cx: 0, cz: 0, hx: 0 };
+function setFit(mode) {
+  FITV.mode = mode; FITV.t = 0; FITV.step = -1;
+  if (!mode) { chars.fitView(false); camMode = 'chase'; __vb.showSkater = false; return; }
+  if (LINE.on) setLineup(false);
+  FITV.cx = S.x; FITV.cz = S.z; FITV.hx = S.x > 0 ? S.x - 2.4 : S.x + 2.4;
+  chars.fitView(true, FITV.hx, S.z);
+  camMode = 'ref'; __vb.showSkater = true;
+}
+function fitPose(step, t) {   // a skate pose in the same terms game.js uses (see characters.js updateSkater)
+  const P = { stance: 1, lean: 0 }, u = (t % 1.3) / 0.9, inJump = u < 1, e = inJump ? Math.sin(u * Math.PI) : 0;
+  if (step === 'ollie' || step === 'kickflip') {
+    P.air = 0.55 * e; P.airN = e; P.pitch = inJump ? 0.35 * Math.sin(Math.min(1, u * 2.2) * Math.PI) : 0; P.crouch = inJump ? 0 : 0.3;
+    if (step === 'kickflip' && inJump) { const f = smooth(0.12, 0.75, u); P.roll = f * Math.PI * 2; P.flick = Math.sin(Math.min(1, u / 0.3) * Math.PI); P.flickDir = 1; P.flipping = f > 0 && f < 1; P.lift = 0.1 * Math.sin(f * Math.PI); }
+  } else if (step === 'bail') { const b = Math.min(1, (t % 1.3) / 0.8), s = Math.sin(b * Math.PI);
+    P.bodyPitch = -0.55 * s; P.boardYaw = -1.1 * s; P.boardZ = -0.5 * s; P.roll = 0.8 * s; P.crouch = 0.5 * s; P.flail = s; P.offBoard = smooth(0, 0.1, b) * (1 - smooth(0.7, 0.95, b)); }
+  return P;
+}
+function updateFit(dt) {
+  if (!FITV.mode) return;
+  FITV.t += dt; S.moving = false;
+  const step = FITV.lockStep ?? Math.floor(FITV.t / 2.6) % FIT_STEPS.length, name = FIT_STEPS[step];
+  if (step !== FITV.step) { FITV.step = step; chars.fitClip(name); }
+  if (name !== 'walk' && name !== 'idle') S.pose = fitPose(name, FITV.t);
+  // orbit centre: the character's neck (it rises in the air and pitches in a bail), so the shoulders stay framed
+  const rig = FITV.mode === 1 ? chars.skaterRig : chars.fitRig(), c = rig ? rig.bones.neck_01.getWorldPosition(_fitC) : _fitC.set(FITV.cx, 1.45, FITV.cz);
+  const a = FITV.lockAngle !== null ? FITV.lockAngle * Math.PI / 180 : FITV.t * 0.35, R = 1.75;
+  Object.assign(REF_POSE, { x: c.x + Math.sin(a) * R, y: c.y + 0.1, z: c.z + Math.cos(a) * R, yaw: -a * 180 / Math.PI, pitch: -9, fov: 50 });
 }
 // Adaptive resolution: pixel ratio floats between 1 and min(devicePixelRatio, 2) to hold ~60 fps.
 let renderScale = Math.min(window.devicePixelRatio, Q.pixelRatioMax, Q.startPixelRatio);
@@ -1826,7 +1865,7 @@ function updateHud(dt) {
   fpsAcc += dt; fpsN++; hudT -= dt;
   if (fpsAcc >= 1) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (hudT <= 0) { hudT = 0.25; const cs = chars ? chars.stats : null;
-    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · J hold phase · P autopilot · L lineup · K close-up · H hitboxes · O AO · C camera</span>`; }
+    hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · G hold phase · J fit test · P autopilot · L lineup · K close-up · H hitboxes · O AO · C camera</span>`; }
 }
 
 // Debug / screenshot hooks (used for the reference comparisons)
@@ -1839,7 +1878,7 @@ window.__vb = {
   chase() { camMode = 'chase'; },
   stop(v = true) { S.moving = !v; },
   get game() { return game; },
-  setLineup, LINE,
+  setLineup, LINE, setFit, fit: FITV,
   findKind(kind, from = 2) { for (let i = from; i < from + 200; i++) if (kindFor(i) === kind) return i; return -1; },
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
   get chars() { return chars; },
@@ -1875,13 +1914,14 @@ function step(dt, t) {
   U.time.value = t;
   if (!cyclePaused) cycleT += dt;
   computePhase(); applyPhase(dt);
-  if (game) game.update(LINE.on ? 0 : dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }   // the lineup holds the game still
+  if (game) game.update(LINE.on || FITV.mode ? 0 : dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }   // the lineup holds the game still
   skater.position.set(S.x, 0, S.z);
   skater.visible = (camMode === 'chase' || __vb.showSkater) && !S.hidden;
   updateCamera(dt);
   updateChunks(Math.min(camera.position.z, S.z));
   sky.position.copy(camera.position);
   ocean.position.z = camera.position.z;
+  updateFit(dt);
   if (chars) chars.update(dt, t, phaseState); else updatePeople(dt, t);
   updateBirds(t, dt); updateFliers(dt, t); updateShadowCam(); updatePost(t);
   if (!__vb.noRender) { renderer.info.reset(); composer.render(dt); }   // noRender: headless simulation for bot tests

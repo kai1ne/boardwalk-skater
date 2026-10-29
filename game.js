@@ -147,6 +147,12 @@ export function createGame(ctx) {
           for (let k = 0; k < n; k++) { const wx = o.x + (k - (n - 1) / 2) * 0.6 + rand(-0.1, 0.1), wz = back + rand(1.9, 2.8);
             o.peds.push(chars.addGameStation({ kind: 'watch', x: wx, z: wz, ry: Math.atan2(o.x - wx, back - wz), seed: seed + k + 1 })); } }
         break; }
+      case 'smokers': {   // one to three people standing together in the lane, smoking and facing each other
+        const n = 1 + Math.floor(Math.random() * 3), a0 = Math.random() * 6.28;
+        if (chars) { o.peds = []; for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2, r = n === 1 ? 0 : 0.42, x = o.x + Math.sin(ang) * r, pz = z + Math.cos(ang) * r * 0.8;
+            o.peds.push(chars.addGameStation({ kind: 'smokeStand', x, z: pz, ry: n === 1 ? rand(-0.6, 0.6) + (Math.random() < 0.5 ? 0 : Math.PI) : Math.atan2(o.x - x, z - pz), seed: seed + k })); } }
+        else placeholder(o);
+        break; }
       default: o.mesh = getMesh(type); o.mesh.rotation.y = (Math.random() - 0.5) * 0.5;
     }
     if (o.ped && type !== 'leash') o.ped.z = o.z; if (o.ped && type === 'leash') o.ped.z = o.z;

@@ -14,7 +14,7 @@ const rand = (a, b) => a + (b - a) * Math.random();
 function wpick(obj) { let s = 0; for (const k in obj) s += obj[k]; let r = Math.random() * s; for (const k in obj) { r -= obj[k]; if (r <= 0) return k; } return Object.keys(obj)[0]; }
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
-const PEOPLE_BLOCKERS = ['ped', 'bike', 'skater', 'selfie'];
+const PEOPLE_BLOCKERS = ['ped', 'bike', 'skater', 'selfie', 'smokers'];
 const OBJECT_BLOCKERS = ['can', 'cones', 'pizza', 'poop'];
 
 export function createDirector(G, LANE_X) {
@@ -60,7 +60,7 @@ export function createDirector(G, LANE_X) {
       case 'can': case 'cones': case 'pizza': case 'poop': jump(p.lane, O[p.type]); break;
       case 'ped': solid(p.lane); if (p.opt && p.opt.drift !== undefined) solid(p.opt.drift); break;
       case 'skater': solid(p.lane); if (p.opt && p.opt.change !== undefined) solid(p.opt.change); break;
-      case 'bike': case 'selfie': solid(p.lane); break;
+      case 'bike': case 'selfie': case 'smokers': solid(p.lane); break;
       case 'performer': solid(p.lane, O.performer.d); break;
       case 'leash': solid(p.lane); jump(p.opt.dogLane, O.dog, p.dz + 0.35); break;
       case 'cross': { const T = O.crossBike; for (let l = 0; l < N; l++) if (Math.abs(LANE_X[l] - p.opt.xArr) < T.w / 2 + 0.25 + 0.6) solid(l); break; }

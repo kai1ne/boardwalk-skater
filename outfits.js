@@ -12,7 +12,7 @@
 //
 // Regions are defined in bind-pose space (the bind pose is a T-pose): torso/leg bands by y, arm length by |x|,
 // using bone landmarks measured from each body:
-//   lm[0] = (ankleY, kneeY, hipY, pelvisY)   lm[1] = (chestY, neckY, shoulderX, elbowX)   lm[2] = (wristX, headY, -, -)
+//   lm[0] = (ankleY, kneeY, hipY, pelvisY)   lm[1] = (chestY, neckY, shoulderX, elbowX)   lm[2] = (wristX, headY, neckZ, -)
 // Style codes: top 0 none · 1 tank · 2 tee · 3 long sleeve · 4 hoodie · 5 dress bodice
 //              bottom 0 none · 1 shorts · 2 capris · 3 jeans/trousers · 4 under a skirt (body masked, the skirt is a rigid part)
 //              shoes 0 barefoot · 1 sandals · 2 sneakers
@@ -29,10 +29,15 @@ function topMask(x, y, z, st, L, k) {
   const top = st[0]; if (top < 0.5) return 0;
   const ax = Math.abs(x), [l0, l1, l2] = L, tank = top < 1.5 || top > 4.5;
   const sleeve = (tank ? l1.z * 0.95 : top < 2.5 ? mix(l1.z, l1.w, 0.55) + 0.02 : l2.x - 0.035) - k;
-  const hem = (top > 4.5 ? l0.z - 0.02 : l0.w - 0.06) + k, neck = l1.y - 0.03 + (top > 3.5 && top < 4.5 ? 0.02 : 0) - k;
-  let t = cs(hem, y) * (1 - cs(neck, y)) * (1 - cs(sleeve, ax));
-  const scoop = (tank ? 0.12 : 0.055) + k; t *= 1 - cs(0, z) * cs(neck - scoop + ax * 0.6, y);
-  if (tank) { const upper = cs(l1.y - 0.14 - k, y), strap = 1 - cs((top > 4.5 ? 0.045 : 0.032) - k, Math.abs(ax - l1.z * 0.45)), torso = 1 - cs(l1.z * 1.02 - k, ax); t *= mix(torso, strap, upper); }
+  const hem = (top > 4.5 ? l0.z - 0.02 : l0.w - 0.06) + k;
+  let t = cs(hem, y) * (1 - cs(sleeve, ax));
+  if (!tank) {   // sleeved tops: covered up over the shoulders, open only inside a round crew collar around the neck
+    const R = (top > 3.5 ? 0.095 : 0.085) + k, rho = Math.hypot(x, z - L[2].z);
+    return t * (1 - cs(l1.y + 0.06 - k, y)) * (1 - cs(l1.y - 0.08 + k, y) * (1 - cs(R, rho)));
+  }
+  const neck = l1.y - 0.03 - k; t *= 1 - cs(neck, y);
+  const scoop = 0.12 + k; t *= 1 - cs(0, z) * cs(neck - scoop + ax * 0.6, y);
+  { const upper = cs(l1.y - 0.14 - k, y), strap = 1 - cs((top > 4.5 ? 0.045 : 0.032) - k, Math.abs(ax - l1.z * 0.45)), torso = 1 - cs(l1.z * 1.02 - k, ax); t *= mix(torso, strap, upper); }
   return t;
 }
 function botMask(x, y, z, st, L, k) {
@@ -50,10 +55,15 @@ float topMask(vec3 p, float k) {
   float top = uStyle.x; if (top < 0.5) return 0.0;
   float ax = abs(p.x); bool tank = top < 1.5 || top > 4.5;
   float sleeve = (tank ? uLm1.z * 0.95 : (top < 2.5 ? mix(uLm1.z, uLm1.w, 0.55) + 0.02 : uLm2.x - 0.035)) - k;
-  float hem = (top > 4.5 ? uLm0.z - 0.02 : uLm0.w - 0.06) + k, neck = uLm1.y - 0.03 + ((top > 3.5 && top < 4.5) ? 0.02 : 0.0) - k;
-  float t = csm(hem, p.y) * (1.0 - csm(neck, p.y)) * (1.0 - csm(sleeve, ax));
-  float scoop = (tank ? 0.12 : 0.055) + k; t *= 1.0 - csm(0.0, p.z) * csm(neck - scoop + ax * 0.6, p.y);
-  if (tank) { float upper = csm(uLm1.y - 0.14 - k, p.y), strap = 1.0 - csm((top > 4.5 ? 0.045 : 0.032) - k, abs(ax - uLm1.z * 0.45)), torso = 1.0 - csm(uLm1.z * 1.02 - k, ax); t *= mix(torso, strap, upper); }
+  float hem = (top > 4.5 ? uLm0.z - 0.02 : uLm0.w - 0.06) + k;
+  float t = csm(hem, p.y) * (1.0 - csm(sleeve, ax));
+  if (!tank) {
+    float R = (top > 3.5 ? 0.095 : 0.085) + k, rho = length(vec2(p.x, p.z - uLm2.z));
+    return t * (1.0 - csm(uLm1.y + 0.06 - k, p.y)) * (1.0 - csm(uLm1.y - 0.08 + k, p.y) * (1.0 - csm(R, rho)));
+  }
+  float neck = uLm1.y - 0.03 - k; t *= 1.0 - csm(neck, p.y);
+  float scoop = 0.12 + k; t *= 1.0 - csm(0.0, p.z) * csm(neck - scoop + ax * 0.6, p.y);
+  { float upper = csm(uLm1.y - 0.14 - k, p.y), strap = 1.0 - csm((top > 4.5 ? 0.045 : 0.032) - k, abs(ax - uLm1.z * 0.45)), torso = 1.0 - csm(uLm1.z * 1.02 - k, ax); t *= mix(torso, strap, upper); }
   return t;
 }
 float botMask(vec3 p, float k) {
@@ -209,7 +219,8 @@ export function createOutfitBuilder({ geo, lm, boneIndex, bonePos, eyesBox }) {
     const st = [r.top, r.bottom, r.shoes], L = lm, parts = [];
     const speck = (x, y, z) => 0.92 + 0.16 * ((Math.sin(x * 917.1 + y * 311.7 + z * 543.3) * 43758.5453) % 1 + 1) % 1;
     // layering: tops always sit further out than bottoms, so a shirt hem lies over the waistband instead of z-fighting with it
-    if (r.top) parts.push(shell((x, y, z) => topMask(x, y, z, st, L, -0.012), r.top === 4 ? 0.03 : r.top === 3 ? 0.019 : 0.016, r.top === 4 ? 14 : 10, (x, y, z, c) => {
+    // r.loose (> 1) makes the top oversized: thicker and smoothed further, so the muscles underneath stop showing
+    if (r.top) parts.push(shell((x, y, z) => topMask(x, y, z, st, L, -0.012), (r.top === 4 ? 0.03 : r.top === 3 ? 0.019 : 0.016) * (r.loose || 1), Math.round((r.top === 4 ? 14 : 10) * (r.loose || 1)), (x, y, z, c) => {
       c.set(r.topCol); if (r.trimCol && topMask(x, y, z, st, L, 0.02) < 0.5) c.set(r.trimCol); }));
     if (r.bottom && r.bottom < 4) parts.push(shell((x, y, z) => botMask(x, y, z, st, L, -0.012), r.bottom === 3 ? 0.008 : 0.01, 8, (x, y, z, c) => { c.set(r.botCol); if (r.denim) c.multiplyScalar(speck(x, y, z)); }));
     if (r.shoes === 2) parts.push(shell((x, y, z) => shoeMask(x, y, z, st, L, -0.012), 0.018, 4, (x, y, z, c) => { c.set(y < 0.028 ? (r.soleCol || '#f2f0ea') : r.shoeCol); }));

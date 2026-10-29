@@ -229,7 +229,7 @@ export async function createCharacters(ctx) {
     root.traverse((o) => { if (!o.isSkinnedMesh) return; const n = o.material.name; if (/Eyes/.test(n)) eyes = o; else if (/Hair/.test(n)) brows = o; else body = o; });
     const lm = [new THREE.Vector4(boneY(root, 'foot_l'), boneY(root, 'calf_l'), boneY(root, 'thigh_l'), boneY(root, 'pelvis')),
       new THREE.Vector4(boneY(root, 'spine_03'), boneY(root, 'neck_01'), boneX(root, 'upperarm_l'), boneX(root, 'lowerarm_l')),
-      new THREE.Vector4(boneX(root, 'hand_l'), boneY(root, 'Head'), 0, 0)];
+      new THREE.Vector4(boneX(root, 'hand_l'), boneY(root, 'Head'), (root.getObjectByName('neck_01').getWorldPosition(tmpV), tmpV.z), 0)];
     const k = boneY(root, 'thigh_l') / manHipY;   // leg-length ratio vs the animation mannequin
     // retarget: keep bone rotations, drop per-bone translation/scale (mannequin proportions), scale pelvis travel by leg ratio
     const clips = {};
@@ -332,8 +332,8 @@ export async function createCharacters(ctx) {
     if (a.cap && !(a.hair === null || /Buzzed/.test(a.hair || ''))) a.hair = sex === 'M' ? 'Hair_Buzzed' : 'Hair_BuzzedFemale';
     a.skinTex = B.skinTex[a.mst < 5 ? 0 : 1]; a.mat = bodyMaterial(B.protoMat, B.lm, a); a.hairMat = hairMat(a.hair || 'Hair_Beard', a.hairCol); a.browMat = browMat(sex, a.hairCol); a.eyeMat = eyeMat(sex, a.eyeCol);
     a.build = 'everyday'; a.variant = B.variants.everyday; a.outfit = { full: a.variant.outfit.full.build(a), low: a.variant.outfit.low.build(a) }; a.id = 100 + Object.keys(PERFORMER_LOOKS).indexOf(act); PERF_APPS[sex][act] = a; }
-  // the player: a fixed recipe, so he looks the same every run (gold tee with purple trim, denim capris, black skate shoes, white socks)
-  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 2, bottom: 2, shoes: 2, topCol: '#fdb927', trimCol: '#552583', botCol: '#4a6c9b', denim: true, shoeCol: '#1a1a1a', socks: true,
+  // the player: a fixed recipe, so he looks the same every run (oversized blue hoodie, black shorts, black skate shoes, white socks)
+  const skaterApp = Object.assign(makeAppearance('M', 77), { top: 4, loose: 1.6, bottom: 1, shoes: 2, topCol: '#2f5daa', trimCol: '#244a8a', botCol: '#18181a', denim: false, shoeCol: '#1a1a1a', socks: true,   // oversized blue hoodie, black shorts
     underCol: '#222', hair: 'Hair_SimpleParted', hairCol: '#2a1c14', beard: false, mst: 6, eyeCol: EYES.darkBrown, cap: undefined, sunglasses: undefined, backpack: undefined, pouch: undefined, skirt: undefined });
   skaterApp.skinTex = BODY.M.skinTex[skaterApp.mst < 5 ? 0 : 1]; skaterApp.mat = bodyMaterial(BODY.M.protoMat, BODY.M.lm, skaterApp); skaterApp.hairMat = hairMat(skaterApp.hair, skaterApp.hairCol); skaterApp.browMat = browMat('M', skaterApp.hairCol); skaterApp.eyeMat = eyeMat('M', skaterApp.eyeCol);
   skaterApp.build = 'everyday'; skaterApp.variant = BODY.M.variants.everyday;
@@ -509,7 +509,7 @@ export async function createCharacters(ctx) {
     this.guitar = new THREE.Mesh(guitarGeo, propVcol); this.keys = new THREE.Mesh(keysGeo, propVcol);
     this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig, this.guitar, this.keys);
     this.g.traverse((m) => { if (m.isMesh) { m.castShadow = m !== this.cig; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
-  const PROPS = []; for (let i = 0; i < 30; i++) PROPS.push(new Prop());
+  const PROPS = []; for (let i = 0; i < 48; i++) PROPS.push(new Prop());
 
   // ---------------- agents ----------------
   // Walkers live in a global pool spanning ~300 m around the camera; stations come from chunk layouts.
@@ -593,10 +593,20 @@ export async function createCharacters(ctx) {
   // skateboard: board (pitch/yaw) > flip (roll about the deck's long axis) > deck + wheels
   const truckMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.35, metalness: 0.85 }), wheelMat = new THREE.MeshStandardMaterial({ color: 0xf1e7c8, roughness: 0.5 }),
     woodMat = new THREE.MeshStandardMaterial({ color: 0xb07a45, roughness: 0.7 });
-  const deckTopGeo = mergeGeometries([new THREE.BoxGeometry(0.205, 0.004, 0.56).translate(0, 0.012, 0),
-    new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.205, 0.004, 0.15).translate(0, 0.012, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
-  const deckPlyGeo = mergeGeometries([new THREE.BoxGeometry(0.2, 0.012, 0.56).translate(0, 0.004, 0),
-    new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, 0.075).rotateX(-0.32).translate(0, 0, 0.28), new THREE.BoxGeometry(0.2, 0.012, 0.15).translate(0, 0.004, -0.075).rotateX(0.32).translate(0, 0, -0.28)]);
+  // deck outline: straight rails with rounded nose and tail, extruded thin, then the last 15 cm at each end bent up
+  // into the kicktails
+  function deckGeo(hw, y0, th) {
+    const shape = new THREE.Shape(), L = 0.33, cap = 0.1, N = 10;   // rails to |z| = L, then a rounded cap of length `cap`
+    shape.moveTo(hw, -L); shape.lineTo(hw, -0.28); shape.lineTo(hw, 0.28); shape.lineTo(hw, L);
+    for (let i = 1; i <= N; i++) { const a = i / N * Math.PI; shape.lineTo(hw * Math.cos(a), L + cap * Math.sin(a)); }
+    shape.lineTo(-hw, 0.28); shape.lineTo(-hw, -0.28); shape.lineTo(-hw, -L);
+    for (let i = 1; i < N; i++) { const a = Math.PI + i / N * Math.PI; shape.lineTo(hw * Math.cos(a), -L + cap * Math.sin(a)); }
+    const g = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: false, curveSegments: 1 }).rotateX(-Math.PI / 2).translate(0, y0, 0);
+    const p = g.attributes.position, kick = Math.tan(0.32);
+    for (let i = 0; i < p.count; i++) { const z = p.getZ(i), e = Math.abs(z) - 0.28; if (e > 0) p.setY(i, p.getY(i) + e * kick); }
+    g.computeVertexNormals(); return g;
+  }
+  const deckTopGeo = deckGeo(0.098, 0.010, 0.004), deckPlyGeo = deckGeo(0.1, -0.002, 0.012);
   const truckGeo = mergeGeometries([-1, 1].flatMap((s) => [new THREE.BoxGeometry(0.06, 0.035, 0.05).translate(0, -0.02, s * 0.22), new THREE.CylinderGeometry(0.008, 0.008, 0.19, 6).rotateZ(Math.PI / 2).translate(0, -0.056, s * 0.22)]));
   const wheelGeo2 = new THREE.CylinderGeometry(0.027, 0.027, 0.032, 14).rotateZ(Math.PI / 2);
   function makeBoard(deckColor) {
@@ -640,7 +650,7 @@ export async function createCharacters(ctx) {
       if (!b && a.game) { b = BIKES.find((x) => x.agent && !x.agent.game); if (b) releaseRig(b.agent.rig); }   // game traffic takes a bike from an ambient cyclist
       if (b) { b.agent = a; a.bike = b; ensureInScene(b); } }
     if (a.kind === 'skate') { const bd = CRUISE_BOARDS.find((x) => !x.agent); if (bd) { bd.agent = a; a.board = bd; bd.deck.children[0].material.color.setHex(a.deckColor); ensureInScene(bd); } }
-    if (a.kind === 'lie' || a.kind === 'piano' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit')) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
+    if (a.kind === 'lie' || a.kind === 'piano' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') || a.kind === 'smokeStand') { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
     return true;
   }
   function setupProp(a) { const p = a.prop, lie = a.kind === 'lie', perf = a.kind === 'perform', sit = SIT_KINDS.has(a.kind), h = a.st.seed >>> 3;
@@ -649,11 +659,11 @@ export async function createCharacters(ctx) {
     p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.52);
     p.guitar.visible = a.kind === 'guitar'; p.keys.visible = a.kind === 'piano'; p.keys.position.set(0, 0, 0.42);
     p.cup.visible = a.kind === 'beg'; p.sign.visible = a.kind === 'beg'; p.sign.material = signMats[h % signMats.length]; p.sign.position.set(-0.42, 0, 0.3); p.sign.rotation.set(-0.25, 0.35, 0);
-    p.cig.visible = a.kind === 'smoke';
+    p.cig.visible = a.kind === 'smoke' || a.kind === 'smokeStand';
     p.g.position.set(a.x, sit ? a.y - FLOOR : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
     p.speaker.position.set(0.9, 0, -0.3); p.hat.position.set(0.1, 0, 0.75); p.towel.position.set(0, 0, 0); }
   function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick; a.key = a.game ? a.dist - 1e4 : a.dist;
-    a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < (a.game ? Q.rRig * 1.5 : Q.rRig)) cands.push(a); }   // game obstacles get rigs further out (they spawn further ahead at speed)
+    a.vis = a.dist < Q.rImp && visible(a.x, 0.9, a.z, a.kind === 'cycle' ? 1.8 : 1.4); if (a.vis && a.dist < (a.game ? Q.rRig * 2 : Q.rRig)) cands.push(a); }   // game obstacles get rigs further out (they spawn further ahead at speed)
   // walkers side-step people standing on the walk (performers, their audience, selfie-takers)
   const OBST = [];
   function avoidX(a) { let off = 0; for (let i = 0; i < OBST.length; i++) { const o = OBST[i], dz = Math.abs(o.z - a.z), dx = a.x - o.x;
@@ -702,6 +712,21 @@ export async function createCharacters(ctx) {
   // seated people: drumming hands on the djembe, a cigarette raised to the mouth now and then, a cup held out
   const _hp = new V3(), _sq = new QT();
   function handTo(mesh, prop, hand, fwd, up) { hand.updateMatrixWorld(true); hand.getWorldPosition(_hp).addScaledVector(_f, fwd).addScaledVector(_UP, up); prop.g.worldToLocal(_hp); mesh.position.copy(_hp); }
+  // a drag every ~7 s: the right hand comes up to the mouth, then a puff on the exhale (sitting or standing smokers)
+  function smokeArm(a, r, t) {
+    const B = r.bones, P = a.prop; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q);
+    _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);
+    const c = (t + a.phase * 7) % 7, lift = smooth(0, 0.7, c) * (1 - smooth(2.3, 3.0, c));
+    B.Head.getWorldPosition(_h);
+    if (lift > 0.01) { _t.copy(_h).addScaledVector(_f, 0.11).addScaledVector(_UP, -0.07).addScaledVector(_r, 0.02);
+      _p.copy(_UP).multiplyScalar(-0.7).addScaledVector(_r, 0.6); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, lift); }
+    else if (a.kind === 'smokeStand') { B.upperarm_r.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_UP, -0.46).addScaledVector(_f, 0.13).addScaledVector(_r, 0.1);   // cigarette held low at the side between drags
+      _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, 0.5); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, 1); }
+    if (P) { handTo(P.cig, P, B.hand_r, 0.05, 0.0); P.cig.rotation.set(0, 0, 0); }
+    cigMat.emissiveIntensity = 1.5;
+    if (a.puffC !== undefined && a.puffC < 3.1 && c >= 3.1) puff(_h.x + _f.x * 0.15, _h.y - 0.04, _h.z + _f.z * 0.15);   // exhale after the drag
+    a.puffC = c;
+  }
   function sitArms(a, r, t) {
     const B = r.bones, P = a.prop; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q);
     _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);   // character forward / right
@@ -736,15 +761,7 @@ export async function createCharacters(ctx) {
         _p.copy(_r).multiplyScalar(-side * 0.8).addScaledVector(_UP, -0.5);
         const L = side > 0; ik2(L ? B.upperarm_l : B.upperarm_r, L ? B.lowerarm_l : B.lowerarm_r, L ? B.hand_l : B.hand_r, _t, _p);
       }
-    } else if (a.kind === 'smoke') {
-      const c = (t + a.phase * 7) % 7, lift = smooth(0, 0.7, c) * (1 - smooth(2.3, 3.0, c));
-      B.Head.getWorldPosition(_h);
-      if (lift > 0.01) { _t.copy(_h).addScaledVector(_f, 0.11).addScaledVector(_UP, -0.07).addScaledVector(_r, 0.02);
-        _p.copy(_UP).multiplyScalar(-0.7).addScaledVector(_r, 0.6); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, lift); }
-      if (P) { handTo(P.cig, P, B.hand_r, 0.05, 0.0); P.cig.rotation.set(0, 0, 0); }
-      cigMat.emissiveIntensity = 1.5;
-      if (a.puffC !== undefined && a.puffC < 3.1 && c >= 3.1) puff(_h.x + _f.x * 0.15, _h.y - 0.04, _h.z + _f.z * 0.15);   // exhale after the drag
-      a.puffC = c;
+    } else if (a.kind === 'smoke') { smokeArm(a, r, t);
     } else if (a.kind === 'beg') {
       B.upperarm_r.getWorldPosition(_hp); _t.copy(_hp).addScaledVector(_f, 0.42).addScaledVector(_UP, -0.26 + Math.sin(t * 1.3 + a.phase * 6) * 0.03).addScaledVector(_r, 0.3);   // cup held out beside the knees
       _p.copy(_UP).multiplyScalar(-1).addScaledVector(_r, 0.4); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p, 0.9);
@@ -788,7 +805,7 @@ export async function createCharacters(ctx) {
   }
   // smoke puffs: a small pool of fading spheres
   const PUFFS = []; { const pg = new THREE.SphereGeometry(0.05, 8, 6);
-    for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
+    for (let i = 0; i < 48; i++) { const m = new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; m.userData.t = 9; m.frustumCulled = false; crowdGroup.add(m); PUFFS.push(m); } }
   function puff(x, y, z) { const m = PUFFS.find((p) => p.userData.t > 2.4); if (!m) return; m.userData.t = 0; m.position.set(x, y, z); m.visible = true; }
   function updatePuffs(dt) { for (const m of PUFFS) if (m.visible) { const u = m.userData; u.t += dt; m.position.y += dt * 0.22; m.position.x += dt * 0.06;
     m.scale.setScalar(1 + u.t * 1.3); m.material.opacity = 0.2 * (1 - u.t / 2.4); if (u.t > 2.4) m.visible = false; } }
@@ -827,8 +844,27 @@ export async function createCharacters(ctx) {
   //   spin (impossible: end-over-end, rad), flickDir (-1 = heelflip), stance (+1 regular / -1 switch),
   //   bodyPitch (+ = leaning back), flail (arm windmill 0..1), boardZ / boardYaw (board kicked out), offBoard (0..1 feet leave the deck)
   const POSE0 = {};
+  // debug fit test (J): FIT.clip = 'walk' / 'idle' plays that clip on the player with no skate pose and the board
+  // hidden; FIT.rig is a second character in a hoodie standing beside him
+  const FIT = { clip: null, rig: null };
+  function fitView(on, x = 0, z = 0) {
+    if (FIT.rig) { FIT.rig.lineup = false; removeFromScene(FIT.rig); FIT.rig = null; }
+    FIT.clip = null; board.visible = true; if (!on) return null;
+    const app = APPS.M.find((a) => a.top === 4) || APPS.F.find((a) => a.top === 4); if (!app) return null;
+    const sex = APPS.M.includes(app) ? 'M' : 'F', r = POOL[sex].find((x) => !x.lineup && (!x.agent || !x.agent.game)); if (!r) return null; if (r.agent) releaseRig(r);
+    r.lineup = true; r.setApp(app); r.setShadow(true); r.setDetail(true); r.setLOD(true); r.phone.visible = false;
+    r.wrap.scale.setScalar(1); r.wrap.position.set(x, 0, z); r.wrap.rotation.set(0, Math.PI, 0); r.snap(CLIP.walk, 0, 1); ensureInScene(r); FIT.rig = r;
+    return { sex, app: app.id };
+  }
+  function fitClip(name) {
+    FIT.clip = name === 'walk' || name === 'idle' ? name : null; board.visible = !FIT.clip;
+    sk.play(FIT.clip === 'walk' ? CLIP.walk : CLIP.idle, { fade: 0.2, ts: FIT.clip === 'walk' ? 1 : 0.6 });
+    if (FIT.rig) FIT.rig.play(name === 'walk' ? CLIP.walk : CLIP.idle, { fade: 0.2, ts: 1 });
+  }
   function updateSkater(dt, t) {
     const B = sk.bones, P = S.pose || POSE0;
+    if (FIT.clip) { if (FIT.rig) FIT.rig.update(dt); _stQ.setFromAxisAngle(_UP, Math.PI); sk.wrap.quaternion.copy(_stQ); sk.wrap.position.set(0, 0, 0); sk.update(dt); return; }
+    if (FIT.rig) FIT.rig.update(dt);
     SKT.vx = lerp(SKT.vx, (S.x - SKT.prevX) / Math.max(dt, 1e-4), 1 - Math.exp(-dt * 6)); SKT.prevX = S.x;
     if (P.lean !== undefined) SKT.lean = P.lean;
     else { const targetLean = clamp(-SKT.vx * 0.22, -0.3, 0.3); SKT.lean = lerp(SKT.lean, S.moving ? targetLean : 0, 1 - Math.exp(-dt * 5)); }
@@ -926,7 +962,7 @@ export async function createCharacters(ctx) {
       CYCLISTS.forEach((a, i) => { if (crowd > 0.15 && i < nCyc) consider(a); else { a.vis = false; if (a.rig) releaseRig(a.rig); } });
       for (const ch of chunks) if (ch.stations) for (const st of ch.stations) { if (crowd < st.minCrowd || (!st.always && ((Math.imul(st.seed, 2654435761) >>> 0) / 4294967296) >= api.walkerScale)) { if (st.agent && st.agent.rig) releaseRig(st.agent.rig); continue; } consider(stationAgent(st)); }
       cands.sort((p, q) => p.key - q.key);   // game pedestrians first, then by distance
-      OBST.length = 0; for (const a of cands) if (a.kind === 'perform' || a.kind === 'watch' || a.kind === 'selfie') OBST.push(a);
+      OBST.length = 0; for (const a of cands) if (a.kind === 'perform' || a.kind === 'watch' || a.kind === 'selfie' || a.kind === 'smokeStand') OBST.push(a);
       const keepM = Q.rigsPerSex, keepF = Q.rigsPerSex; let nM = 0, nF = 0;
       for (const a of cands) { if (a.sex === 'M' ? nM++ < keepM : nF++ < keepF) a.want = tick; }
       for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && (r.agent.want !== tick || r.agent.seen !== tick)) releaseRig(r);
@@ -945,6 +981,7 @@ export async function createCharacters(ctx) {
         if (a.kind === 'skate') { r.saveOverride(); cruise(a, r); }
         else if (a.kind === 'beg' || a.kind === 'smoke' || a.kind === 'drum' || a.kind === 'guitar') { r.saveOverride(); sitArms(a, r, t); }
         else if (a.kind === 'piano') { r.saveOverride(); pianoArms(a, r, t); }
+        else if (a.kind === 'smokeStand') { r.saveOverride(); smokeArm(a, r, t); }
         else if (a.kind === 'selfie') { r.saveOverride(); selfie(r, t); } else if (a.kind === 'lie') { r.saveOverride(); lieArms(r); } else if (a.kind === 'cycle') { r.saveOverride(); cycle(a, r); } }
       if (near) stats.near++; else stats.mid++;
       // dog on a lead, trotting beside the owner at the owner's pace
@@ -981,6 +1018,6 @@ export async function createCharacters(ctx) {
   const aoHidden = [];
   function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
-  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
+  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, fitView, fitClip, fitRig: () => FIT.rig, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
 }

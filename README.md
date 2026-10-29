@@ -31,7 +31,8 @@ Debug keys:
 | Key | Action |
 |---|---|
 | 1–4 | Jump to a lighting phase: sunny midday, golden hour, marine-layer fog, blue hour |
-| J | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| G | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| J | Clothing fit test: the game holds still and the camera orbits the player (walk, idle, skate stance, ollie, kickflip, bail); J again for a character in a hoodie, J again to exit |
 | L | Character lineup: 24 characters in two rows (the game holds still) |
 | K | Close-up at 2 m, stepping through the lineup characters one by one |
 | P | Autopilot: a bot plays the game (shown as AUTOPILOT at the top) |
@@ -41,7 +42,7 @@ Debug keys:
 
 ## How to play
 
-Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride without damage) to 115 km/h.
+Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride without damage) to 230 km/h.
 
 - **Health** (top right): every obstacle you run into costs health: 34 for anything solid (3 hits end the run) and
   10 for slipping on pizza or poop. Each obstacle can only hit you once, and there's no invincibility window, so
@@ -54,11 +55,12 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
 - **Cyclists** and **other skaters** ride with you or toward you. Some skaters change lane, leaning for half a
   second first so you can see it coming. Now and then a cyclist or skater also **rides across** the boardwalk.
 - **Influencers** stand or back up slowly with their phone held up; their camera flashes as you pass close.
+- **Smokers** stand in a lane alone or in a group of two or three, taking drags and blowing smoke.
 - **Dog walkers:** the owner in one lane and the dog in the next, with the red lead between them. A short-to-medium
   ollie clears the dog and the lead; the owner can't be jumped.
 - **Buskers:** a guitarist, drummer or keyboard player on a rug in an outer lane, with a few people watching. The
   rug marks the whole footprint; it can't be jumped.
-- You can't jump walkers, riders or influencers either, so change lane.
+- You can't jump walkers, riders, influencers or smokers either, so change lane.
 - **Knocked-over trash cans** and **cone groups** can be jumped, but they need a fairly well-charged ollie.
 - **Pizza** and **dog poop** make you slip: you lose 10 health and some speed. Jump them, or hit jump within 0.1 s
   of touching one to get away clean.
@@ -131,6 +133,10 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   `SkinnedMesh` bound to the body skeleton. Skirts are rigid, so seated kinds (sitters, drummers, cyclists,
   skaters) never get one. The three performers have their own fixed outfits, and the player's look is a fixed
   recipe, which makes a title-screen character choice a matter of offering a few recipes.
+- **Necklines:** sleeved tops (tee, long sleeve, hoodie) cover the shoulders and open only inside a round crew
+  collar around the neck (radius 8.5 cm, 9.5 cm for hoodies). A flat neckline cut below the top of these
+  muscular shoulders and left them bare. The player wears an oversized hoodie (`loose: 1.6` in his recipe makes
+  the shell thicker and smoother, so the build underneath doesn't show).
 - **LOD:** each body and outfit has a simplified version (SimplifyModifier: about 12.6K → 5.1K triangles) used
   past 12 m, with hysteresis out to 13.5 m so rigs don't flicker between levels. The lineup and the player always
   use full detail.
