@@ -62,7 +62,7 @@ export function createGame(ctx) {
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
     mode: 'ground', t: 0, y: 0, vy: 0, airT: 0, airDur: 1, jumpF: 0, chargeT: 0, jumpHeld: false, flipOnPop: false,
-    trick: null, tricks: [], lastGround: 0, stance: 1, popStance: 1, stumbleT: 0, slipSpeed: 0, slipApplied: false,
+    trick: null, tricks: [], lastGround: 0, stance: 1, invT: 0, flip: null, attempted: false, stumbleT: 0, slipSpeed: 0, slipApplied: false,
     speed: G.speed.title, clearedThisJump: 0 };
   let clock = 0;
   S.x = sk.x; S.speed = sk.speed; S.pose = {};
@@ -334,13 +334,13 @@ export function createGame(ctx) {
   }
   function startGame() {
     clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0 });
-    Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 });
+    Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], flip: null, attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
     if (ctx.onStart) { ctx.onStart(); if (ctx.phase && ctx.phaseNow) ctx.phaseNow(); }
     ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
   }
   function gameOver() {
-    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null;
+    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.flip = null; sk.invT = 0; S.hidden = false;
     st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
     entering = !bot.on && qualifies(st.score); ui.name.value = '';   // autopilot runs don't go on the list
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
@@ -374,18 +374,31 @@ export function createGame(ctx) {
     setMode('charge'); sk.chargeT = 0; sk.jumpHeld = true; return true;
   }
   function chargeFrac() { return clamp(sk.chargeT / J.chargeTime, 0, 1); }
-  // the jump's height picks the trick: a quick tap is a plain ollie, then kickflip → heelflip → hardflip → 360 flip → impossible
-  function trickFor(f) { if (f < TR.ollieBelow) return null; const o = TR.order; return o[Math.min(o.length - 1, Math.floor((f - TR.ollieBelow) / (1 - TR.ollieBelow) * o.length))]; }
   function pop() {
     let f = chargeFrac();
     if (st.mode === 'playing') { f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); st.energy -= ollieCost(f); }
     const h = lerp(J.minHeight, J.maxHeight, f);
     setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
-    sk.tricks = []; sk.clearedThisJump = 0; sk.popStance = sk.stance;
-    const type = trickFor(f); sk.trick = type ? { type, t: -TR.delay, dur: TR.durShare * sk.airDur - TR.delay } : null;   // always lands in time
+    sk.tricks = []; sk.clearedThisJump = 0;
+    sk.trick = null; sk.flip = null; sk.attempted = false;
   }
-  // ↑/↓ in the air: swap which foot leads (regular ↔ switch); you land and keep riding that way
-  function switchStance() { if (sk.mode === 'air') sk.stance = -sk.stance; }
+  // ↑/↓ in the air start a trick (one per jump): after the first press, wait up to flipWindow for a second press, then flip.
+  // On the ground, ↓ swaps which foot leads.
+  function pressFlip(dir) {
+    if (sk.mode === 'air') { if (sk.trick || sk.attempted) return; const c = dir > 0 ? 'U' : 'D';
+      if (!sk.flip) sk.flip = { keys: c, t: 0 }; else { sk.flip.keys += c; startFlip(); } }
+    else if (dir < 0 && (grounded() || sk.mode === 'charge')) sk.stance = -sk.stance;
+  }
+  // a trick lands only from a high enough jump with enough air left; otherwise the board starts to go and he bails on landing
+  function startFlip() {
+    const type = TR.inputs[sk.flip.keys], T = TR[type], ok = sk.jumpH >= T.minApex && sk.airDur - sk.airT >= T.dur + TR.airMargin;
+    sk.flip = null; sk.attempted = true; sk.trick = { type, t: 0, dur: T.dur, fail: !ok };
+  }
+  // the inputs that would land right now (the debug overlay and the autopilot read this)
+  function availableFlips() { const left = sk.airDur - sk.airT; return Object.keys(TR.inputs).filter((k) => { const T = TR[TR.inputs[k]]; return sk.jumpH >= T.minApex && left - (k.length === 1 ? TR.flipWindow : 0) >= T.dur + TR.airMargin; }); }
+  function bail() {
+    sk.trick = null; sk.flip = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+  }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
   function pressLane(d) { if (st.mode !== 'over') sk.queue.push(d); }   // applied to the target lane next frame
@@ -399,23 +412,20 @@ export function createGame(ctx) {
   }
   function land() {
     sk.y = 0; sk.vy = 0;
-    if (sk.trick) {   // still flipping when the wheels touch down: wipe out
-      sk.trick = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); damage(HP.fall, 'WIPEOUT'); return;
-    }
+    if (sk.trick || sk.flip) { bail(); return; }   // a failed attempt, or a press too late to flip at all
     setMode('land');
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
-    for (const t of sk.tricks) { pts += TR[t].pts; names.push(TRICK_NAME[t]); }
-    if (sk.stance !== sk.popStance) { pts += SC.switchBonus; names.push('SWITCH'); }   // changed feet in the air
-    if (over) pts *= SC.overObstacle;
-    const mult = Math.min(SC.comboMax, 1 + st.combo); pts *= mult; addBonus(pts); st.combo++;
-    const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');
-    popup(`${label}${over ? ' OVER' : ''} +${pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
+    let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); }
+    const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
+    const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');   // a trick's popup shows its own points; the score tag shows the jump's total
+    popup(`${label}${over ? ' OVER' : ''} +${names.length ? trickPts * k * mult : pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
   }
 
   function updateSkater(dt) {
     sk.t += dt; if (sk.stumbleT > 0) sk.stumbleT -= dt;
+    if (sk.invT > 0) { sk.invT -= dt; S.hidden = sk.invT > 0 && Math.floor(sk.invT * TR.bail.flickerHz * 2) % 2 === 0; } else S.hidden = false;   // flicker after a bail
     if (grounded()) sk.lastGround = clock;
     // lanes: the board carves toward a target lane at a sideways speed tied to the forward speed.
     // Each press moves the target one lane; holding a direction keeps pushing the target on before
@@ -443,7 +453,9 @@ export function createGame(ctx) {
         if (!sk.jumpHeld && sk.chargeT >= J.minCrouch) pop(); break;   // held: stays crouched until released
       case 'air':
         sk.airT += dt; sk.vy -= J.gravity * dt; sk.y += sk.vy * dt;
-        if (sk.trick) { sk.trick.t += dt; if (sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; } }
+        if (sk.flip) { sk.flip.t += dt; if (sk.flip.t >= TR.flipWindow) startFlip(); }
+        if (sk.trick) { sk.trick.t += dt; if (!sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; } }
+        if (st.mode === 'title' && !sk.attempted && !sk.flip && sk.airT > 0.02) { const a = availableFlips(); sk.attempted = !a.length; if (a.length) for (const c of a[Math.floor(Math.random() * a.length)]) pressFlip(c === 'U' ? 1 : -1); }   // show off on the title screen
         if (sk.y <= 0) land();
         break;
       case 'land': if (sk.t >= J.landTime) setMode('ground'); break;
@@ -463,7 +475,8 @@ export function createGame(ctx) {
         P.pitch = u < 0.35 ? Math.sin(u / 0.35 * Math.PI) * 0.42 : 0;
         P.crouch = lerp(-0.15, 0.3 + 0.25 * sk.jumpF, smooth(0.12, 0.55, u)) - 0.25 * smooth(0.8, 1, u);   // pop extends, legs tuck (more on big jumps), then reach for the ground
         const tr = sk.trick;
-        if (tr && tr.t > 0) { const f = clamp(tr.t / tr.dur, 0, 1), e = smooth(0, 1, f), y = tr.type;
+        if (tr && tr.t > 0) { const f = clamp(tr.t / tr.dur, 0, 1) * (tr.fail ? 0.45 : 1), e = smooth(0, 1, f), y = tr.type;   // a failed flip stalls part-way and he loses balance
+          if (tr.fail) { const w = smooth(0, 1, tr.t / tr.dur); P.flail = w; P.bodyPitch = -0.32 * w; }
           P.flipping = true; P.lift = Math.sin(f * Math.PI) * (y === 'kickflip' || y === 'heelflip' ? 0.11 : 0.15);
           if (y === 'impossible') P.spin = e * Math.PI * 2;                                  // board wraps end over end around the back foot
           else { P.roll = (y === 'heelflip' ? -1 : 1) * e * Math.PI * 2; P.flick = Math.sin(clamp(f / 0.3, 0, 1) * Math.PI); P.flickDir = y === 'heelflip' ? -1 : 1; }
@@ -502,6 +515,7 @@ export function createGame(ctx) {
         const gap = Math.max(x0 - sx1, sx0 - x1);
         if (gap > 0) { o.minGap = Math.min(o.minGap, gap); continue; }   // passing beside it: track how close
         if (p.clear !== null && sk.y > p.clear) { if (!o.cleared) sk.clearedThisJump++; o.cleared = true; o.minV = Math.min(o.minV, sk.y - p.clear); continue; }
+        if (sk.invT > 0) continue;   // brief invincibility after a bail
         o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(p.dmg); break;
       }
       if (!o.done && !ahead) {   // fully behind the skater
@@ -674,7 +688,8 @@ export function createGame(ctx) {
       case 'laneLeft': sk.held[-1] = true; pressLane(-1); return true;
       case 'laneRight': sk.held[1] = true; pressLane(1); return true;
       case 'crouchJump': pressJump(); return true;
-      case 'flipUp': case 'flipDown': switchStance(); return true;
+      case 'flipUp': pressFlip(1); return true;
+      case 'flipDown': pressFlip(-1); return true;
     }
     return false;
   }

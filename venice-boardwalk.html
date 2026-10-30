@@ -149,16 +149,17 @@ const GAME = {
           gravity: 12.4,                   // m/s²: 0.4 m → 0.51 s in the air, 1.05 m → 0.82 s
           landTime: 0.26,                  // s knee flex on landing (can jump again straight away)
           coyote: 0.1 },                   // s grace: a jump pressed just after touching a slip hazard still clears it
-  tricks: { ollieBelow: 0.2,               // charge share below which a jump is a plain ollie (quick taps)
-            order: ['kickflip', 'heelflip', 'hardflip', 'threeSixty', 'impossible'],   // tricks by jump height, lowest → highest
-            durShare: 0.72,                // a trick takes this share of the jump's air time, so it always finishes before landing
-            delay: 0.05,                   // s after the pop before the board starts to flip
-            kickflip: { pts: 150 }, heelflip: { pts: 175 }, hardflip: { pts: 250 }, threeSixty: { pts: 325 }, impossible: { pts: 400 } },
+  tricks: { flipWindow: 0.15,              // s after the first ↑/↓ to wait for a second press before the flip starts
+            airMargin: 0.08,               // s of air that must be left over after the flip, or it's a failed attempt
+            inputs: { U: 'kickflip', D: 'heelflip', UU: 'threeSixty', DD: 'impossible', UD: 'hardflip', DU: 'hardflip' },   // one trick per jump
+            kickflip: { pts: 150, minApex: 0.60, dur: 0.25 }, heelflip: { pts: 175, minApex: 0.60, dur: 0.25 }, hardflip: { pts: 250, minApex: 0.75, dur: 0.30 },   // minApex in m, dur in s
+            threeSixty: { pts: 325, minApex: 0.85, dur: 0.32 }, impossible: { pts: 400, minApex: 0.95, dur: 0.36 },
+            discover: ['kickflip', 'heelflip', 'threeSixty', 'impossible'], bonus: 'hardflip',   // the game-over list; the bonus trick stays hidden until landed
+            bail: { invuln: 1.2, flickerHz: 12 } },   // after a failed trick (damage = a cone hit): s of invincibility, skater flicker rate
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
   health: { max: 100, hit: 35,             // fallback damage for an obstacle without its own `dmg` (each obstacle below sets one)
             slip: 10,                      // damage from slipping on pizza or poop (not if you jump within the coyote window)
-            fall: 20,                      // damage from a wipeout
             regenDelay: 8, regen: 1.5 },   // after 8 s without damage, health refills at 1.5 per second (a 35 hit back in ~23 s)
   hazards: { shake: 0.3, hitStop: 0.07, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit; hitStop = s the action freezes
   skaterBox: { w: 0.5, d: 0.9, h: 1.75 },  // collision box (m)
@@ -221,8 +222,7 @@ const GAME = {
            overObstacle: 2,                // multiplier for a jump that cleared an obstacle
            clear: 75, comboMax: 8,         // the combo chains landed jumps and close calls; it resets on a hit or a wipeout
            nearMiss: 60, nearDist: 0.45,   // close call: passing within 0.45 m of an obstacle's hitbox without touching it
-           nearJump: 0.15,                 // …or clearing a jumpable with less than 0.15 m to spare
-           switchBonus: 50 },              // landing after swapping feet in the air (↑/↓)
+           nearJump: 0.15 },               // …or clearing a jumpable with less than 0.15 m to spare
   overDelay: 0.9,                          // s before the game-over screen appears
 };
 Q.characters.laneClear = GAME.lanes.count / 2 * GAME.lanes.width + 0.1;   // ambient crowd stays outside the lanes
