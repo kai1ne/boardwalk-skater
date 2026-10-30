@@ -41,7 +41,6 @@
   .pop.hint { color: #ffd84a; font-size: 18px; animation: hint 4s ease-out forwards; }
   @keyframes hint { 0% { opacity: 0; transform: translateY(8px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
   #gDbg { display: none; position: absolute; left: 14px; top: 120px; margin: 0; padding: 8px 10px; background: rgba(0,0,0,.55); border-radius: 6px; font: bold 12px/1.5 "Trebuchet MS", "Lucida Grande", sans-serif; white-space: pre; }
-  #gCount { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; pointer-events: none; font: bold 140px "Trebuchet MS", "Lucida Grande", sans-serif; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); }
   .frozen .pop { animation-play-state: paused; }
   .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; } .pop.near { color: #b8ff6a; font-size: 19px; }
   #gBot { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); font: bold 13px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; color: #111; background: #ffd84a; padding: 3px 10px; border-radius: 4px; pointer-events: none; }
@@ -137,7 +136,6 @@
   </div>
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
-<div id="gCount"></div>
 <div id="gPause" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/paused-logo.png" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
@@ -189,14 +187,13 @@ const GAME = {
           gravity: 12.4,                   // m/s²: 0.4 m → 0.51 s in the air, 1.05 m → 0.82 s
           landTime: 0.26,                  // s knee flex on landing (can jump again straight away)
           coyote: 0.1 },                   // s grace: a jump pressed just after touching a slip hazard still clears it
-  tricks: { flipWindow: 0.15,              // s after the first ↑/↓ to wait for a second press before the flip starts
+  tricks: { flipWindow: 0.35,              // s after the first ↑/↓ that a second press still upgrades it to the double trick
             airMargin: 0.08,               // s of air that must be left over after the flip, or it's a failed attempt
             inputs: { U: 'kickflip', D: 'heelflip', UU: 'threeSixty', DD: 'impossible', UD: 'hardflip', DU: 'hardflip' },   // one trick per jump
             kickflip: { pts: 150, minApex: 0.60, dur: 0.25 }, heelflip: { pts: 175, minApex: 0.60, dur: 0.25 }, hardflip: { pts: 250, minApex: 0.75, dur: 0.30 },   // minApex in m, dur in s
             threeSixty: { pts: 325, minApex: 0.85, dur: 0.32 }, impossible: { pts: 400, minApex: 0.95, dur: 0.36 },
             discover: ['kickflip', 'heelflip', 'threeSixty', 'impossible'], bonus: 'hardflip',   // the game-over list; the bonus trick stays hidden until landed
             bail: { invuln: 1.2, flickerHz: 12 } },   // after a failed trick (damage = a cone hit): s of invincibility, skater flicker rate
-  pause: { countdown: 3 },                 // s of 3-2-1 after resuming, with input ignored
   hints: { holdAfter: 60, airAfter: 3 },   // s of play with no jump before "Try holding Space"; jumps with no trick attempt before "Try ↑ or ↓ in the air"
   save: { key: 'boardwalkSkater.save.v1', oldScores: 'vbSkaterScores', oldBest: 'vbSkaterBest', topN: 5, nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
@@ -2016,11 +2013,11 @@ Object.defineProperty(clock, 'elapsedTime', { get() { return clock.getElapsed();
 let started = false, worldT = 0;   // world time stops while paused, so waves, flags, dancers and birds hold still too
 function frame(ts) {
   requestAnimationFrame(frame); clock.update(ts);
-  const rawDt = clock.getDelta(); updateResolution(rawDt); if (game) game.realTick(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
+  const rawDt = clock.getDelta(); updateResolution(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
   step(Math.min(rawDt, 0.05) * __vb.timeScale * stop, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
 }
 function step(dt, t) {
-  if (game && game.paused) dt = 0;   // paused or counting down: the world holds still, rendering continues
+  if (game && game.paused) dt = 0;   // paused: the world holds still, rendering continues
   worldT += dt; t = worldT; U.time.value = t;
   if (!cyclePaused) cycleT += dt;
   computePhase(); applyPhase(dt);

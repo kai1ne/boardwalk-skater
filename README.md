@@ -24,7 +24,7 @@ loads from jsDelivr through an import map.
 | Space | Hold to crouch and charge, release to jump. A quick tap is a plain ollie; a longer hold jumps higher (full charge at 0.45 s). Keep holding and he stays crouched |
 | ↑ / ↓ in the air | Tricks (one per jump). They aren't listed in the game: you discover them |
 | ↓ on the ground | Swap which foot leads |
-| Esc | Pause; Esc, Enter or Space resume with a 3-2-1. The game also pauses when the tab is hidden or the window loses focus |
+| Esc | Pause; Esc, Enter or Space resume. The game also pauses when the tab is hidden or the window loses focus |
 | C | Credits, on the title screen |
 
 Tricks: ↑ kickflip · ↓ heelflip · ↑↑ 360 flip · ↓↓ impossible · ↑↓ or ↓↑ hardflip (hidden bonus). Each needs a minimum jump height

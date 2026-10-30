@@ -26,7 +26,7 @@ export function createGame(ctx) {
   const $ = (id) => document.getElementById(id);
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), count: $('gCount'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
   // saved game: top scores, tricks discovered and hints shown, in localStorage under a versioned key. Bad or missing data
   // starts fresh; if storage is blocked everything lives in memory for the session and the game-over screen says so.
@@ -68,11 +68,11 @@ export function createGame(ctx) {
       entering = false; ui.name.blur(); showScreens(); renderScores();
     }
   });
-  const st = { mode: 'title', paused: false, countT: 0, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
+  const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
     mode: 'ground', t: 0, y: 0, vy: 0, airT: 0, airDur: 1, jumpF: 0, chargeT: 0, jumpHeld: false, flipOnPop: false,
-    trick: null, tricks: [], lastGround: 0, stance: 1, invT: 0, flip: null, attempted: false, stumbleT: 0, slipSpeed: 0, slipApplied: false,
+    trick: null, tricks: [], lastGround: 0, stance: 1, invT: 0, attempted: false, stumbleT: 0, slipSpeed: 0, slipApplied: false,
     speed: G.speed.title, clearedThisJump: 0 };
   let clock = 0;
   S.x = sk.x; S.speed = sk.speed; S.pose = {};
@@ -343,14 +343,14 @@ export function createGame(ctx) {
     if (st.health <= 0) gameOver();
   }
   function startGame() {
-    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, countT: 0, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false });
-    Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], flip: null, attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
+    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false });
+    Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
     if (ctx.onStart) { ctx.onStart(); if (ctx.phase && ctx.phaseNow) ctx.phaseNow(); }
     ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
   }
   function gameOver() {
-    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.flip = null; sk.invT = 0; S.hidden = false;
+    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false;
     renderDiscoveries(); st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
     entering = !bot.on && qualifies(st.score); ui.name.value = '';   // autopilot runs don't go on the list
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
@@ -362,16 +362,13 @@ export function createGame(ctx) {
     ui.entry.style.display = asking ? 'block' : 'none'; ui.overGo.style.display = entering ? 'none' : '';
     if (asking && document.activeElement !== ui.name) ui.name.focus();
   }
-  // pausing lets go of held keys and any charge; resuming runs a 3-2-1 with input ignored, then play picks up where it stopped
+  // pausing lets go of held keys and any charge; resuming picks up exactly where it stopped
   function setPaused(p) {
-    if (st.mode !== 'playing') { st.paused = false; st.countT = 0; }
-    else if (p) { st.paused = true; st.countT = 0; sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; if (sk.mode === 'charge') setMode('ground'); }
-    else if (st.paused) { st.paused = false; st.countT = G.pause.countdown; }
-    showScreens(); drawCount();
+    if (st.mode !== 'playing') st.paused = false;
+    else if (p) { st.paused = true; sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; if (sk.mode === 'charge') setMode('ground'); }
+    else st.paused = false;
+    showScreens(); document.body.classList.toggle('frozen', st.paused);
   }
-  const isFrozen = () => st.paused || st.countT > 0;
-  function drawCount() { ui.count.style.display = st.countT > 0 ? 'flex' : 'none'; if (st.countT > 0) ui.count.textContent = Math.ceil(st.countT); document.body.classList.toggle('frozen', isFrozen()); }
-  function realTick(raw) { if (st.countT > 0) { st.countT = Math.max(0, st.countT - raw); drawCount(); } }   // the countdown runs on real time; the world is stopped
   function autoPause() { if (st.mode === 'playing' && !bot.on) setPaused(true); }
 
   // -------------------------------------------------------------------------------------
@@ -400,22 +397,22 @@ export function createGame(ctx) {
     const h = lerp(J.minHeight, J.maxHeight, f);
     setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
     sk.tricks = []; sk.clearedThisJump = 0; st.jumped = true; sk.botTried = false;
-    sk.trick = null; sk.flip = null; sk.attempted = false;
+    sk.trick = null; sk.attempted = false;
   }
-  // ↑/↓ in the air start a trick (one per jump): after the first press, wait up to flipWindow for a second press, then flip.
-  // On the ground, ↓ swaps which foot leads.
+  // ↑/↓ in the air start a trick (one per jump). The first press flips straight away; a second press within flipWindow
+  // turns it into the double trick, carrying on from wherever the board has got to. On the ground, ↓ swaps which foot leads.
   function pressFlip(dir) {
-    if (sk.mode === 'air') { if (sk.trick || sk.attempted) return; const c = dir > 0 ? 'U' : 'D';
-      if (!sk.flip) sk.flip = { keys: c, t: 0 }; else { sk.flip.keys += c; startFlip(); } }
+    if (sk.mode === 'air') { const c = dir > 0 ? 'U' : 'D', tr = sk.trick;
+      if (!sk.attempted) startFlip(c); else if (tr && tr.keys.length === 1 && tr.t < TR.flipWindow) startFlip(tr.keys + c, S.pose.roll || 0); }
     else if (dir < 0 && (grounded() || sk.mode === 'charge')) sk.stance = -sk.stance;
   }
   // a trick lands only from a high enough jump with enough air left; otherwise the board starts to go and he bails on landing
-  function startFlip() {
-    const type = TR.inputs[sk.flip.keys], T = TR[type], ok = sk.jumpH >= T.minApex && sk.airDur - sk.airT >= T.dur + TR.airMargin;
-    sk.flip = null; sk.attempted = true; sk.trick = { type, t: 0, dur: T.dur, fail: !ok };
+  function startFlip(keys, roll0) {
+    const type = TR.inputs[keys], T = TR[type], ok = sk.jumpH >= T.minApex && sk.airDur - sk.airT >= T.dur + TR.airMargin;
+    sk.attempted = true; sk.trick = { type, keys, t: 0, dur: T.dur, fail: !ok, roll0 };
   }
   // the inputs that would land right now (the debug overlay and the autopilot read this)
-  function availableFlips() { const left = sk.airDur - sk.airT; return Object.keys(TR.inputs).filter((k) => { const T = TR[TR.inputs[k]]; return sk.jumpH >= T.minApex && left - (k.length === 1 ? TR.flipWindow : 0) >= T.dur + TR.airMargin; }); }
+  function availableFlips() { const left = sk.airDur - sk.airT; return Object.keys(TR.inputs).filter((k) => { const T = TR[TR.inputs[k]]; return sk.jumpH >= T.minApex && left >= T.dur + TR.airMargin; }); }
   // tricks discovered (saved); the bonus trick stays off the list until it's been landed
   function renderDiscoveries() {
     const n = TR.discover.filter((t) => save.tricks[t]).length;
@@ -428,7 +425,7 @@ export function createGame(ctx) {
     save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
   }
   function bail() {
-    if (bot.on) bot.bails++; sk.trick = null; sk.flip = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
@@ -443,7 +440,8 @@ export function createGame(ctx) {
   }
   function land() {
     sk.y = 0; sk.vy = 0;
-    if (sk.trick || sk.flip) { bail(); return; }   // a failed attempt, or a press too late to flip at all
+    if (sk.trick && !sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; }   // finished, still open for a second press
+    if (sk.trick) { bail(); return; }   // a failed attempt, or still flipping
     setMode('land');
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
@@ -486,9 +484,8 @@ export function createGame(ctx) {
         if (!sk.jumpHeld && sk.chargeT >= J.minCrouch) pop(); break;   // held: stays crouched until released
       case 'air':
         sk.airT += dt; sk.vy -= J.gravity * dt; sk.y += sk.vy * dt;
-        if (sk.flip) { sk.flip.t += dt; if (sk.flip.t >= TR.flipWindow) startFlip(); }
-        if (sk.trick) { sk.trick.t += dt; if (!sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; } }
-        if (st.mode === 'title' && !sk.attempted && !sk.flip && sk.airT > 0.02) { const a = availableFlips(); sk.attempted = !a.length; if (a.length) for (const c of a[Math.floor(Math.random() * a.length)]) pressFlip(c === 'U' ? 1 : -1); }   // show off on the title screen
+        if (sk.trick) { const tr = sk.trick; tr.t += dt; if (!tr.fail && tr.t >= tr.dur && (tr.keys.length > 1 || tr.t >= TR.flipWindow)) { sk.tricks.push(tr.type); sk.trick = null; } }
+        if (st.mode === 'title' && !sk.attempted && sk.airT > 0.02) { const a = availableFlips(); sk.attempted = !a.length; if (a.length) for (const c of a[Math.floor(Math.random() * a.length)]) pressFlip(c === 'U' ? 1 : -1); }   // show off on the title screen
         if (sk.y <= 0) land();
         break;
       case 'land': if (sk.t >= J.landTime) setMode('ground'); break;
@@ -508,11 +505,12 @@ export function createGame(ctx) {
         P.pitch = u < 0.35 ? Math.sin(u / 0.35 * Math.PI) * 0.42 : 0;
         P.crouch = lerp(-0.15, 0.3 + 0.25 * sk.jumpF, smooth(0.12, 0.55, u)) - 0.25 * smooth(0.8, 1, u);   // pop extends, legs tuck (more on big jumps), then reach for the ground
         const tr = sk.trick;
-        if (tr && tr.t > 0) { const f = clamp(tr.t / tr.dur, 0, 1) * (tr.fail ? 0.45 : 1), e = smooth(0, 1, f), y = tr.type;   // a failed flip stalls part-way and he loses balance
+        if (tr && tr.t > 0 && (tr.t < tr.dur || tr.fail)) { const f = clamp(tr.t / tr.dur, 0, 1) * (tr.fail ? 0.45 : 1), e = smooth(0, 1, f), y = tr.type;   // a failed flip stalls part-way and he loses balance
           if (tr.fail) { const w = smooth(0, 1, tr.t / tr.dur); P.flail = w; P.bodyPitch = -0.32 * w; }
           P.flipping = true; P.lift = Math.sin(f * Math.PI) * (y === 'kickflip' || y === 'heelflip' ? 0.11 : 0.15);
-          if (y === 'impossible') P.spin = e * Math.PI * 2;                                  // board wraps end over end around the back foot
-          else { P.roll = (y === 'heelflip' ? -1 : 1) * e * Math.PI * 2; P.flick = Math.sin(clamp(f / 0.3, 0, 1) * Math.PI); P.flickDir = y === 'heelflip' ? -1 : 1; }
+          const r0 = tr.roll0 ?? 0;   // an upgraded trick carries on from the first flip's roll
+          if (y === 'impossible') { P.spin = e * Math.PI * 2; P.roll = r0 * (1 - e); }       // board wraps end over end around the back foot
+          else { P.roll = lerp(r0, (tr.roll0 !== undefined ? (r0 >= 0 ? 1 : -1) : y === 'heelflip' ? -1 : 1) * Math.PI * 2, e); P.flick = Math.sin(clamp(f / 0.3, 0, 1) * Math.PI); P.flickDir = y === 'heelflip' ? -1 : 1; }
           if (y === 'hardflip') { P.boardYaw = e * Math.PI; P.pitch += Math.sin(f * Math.PI) * 0.7; }   // flips up between the legs
           else if (y === 'threeSixty') P.boardYaw = e * Math.PI * 2; }                        // kickflip + 360 shove-it
         break; }
@@ -667,12 +665,12 @@ export function createGame(ctx) {
     ui.dbg.style.display = dbgOn ? 'block' : 'none'; if (!dbgOn) return;
     const air = sk.mode === 'air', apex = sk.mode === 'charge' ? apexIfReleased() : air ? sk.jumpH : 0, left = air ? sk.airDur - sk.airT : 0;
     const fits = [...TR.discover, TR.bonus].filter((t) => apex >= TR[t].minApex).map((t) => TRICK_NAME[t]);
-    const win = sk.flip ? `waiting ${sk.flip.keys} ${(TR.flipWindow - sk.flip.t).toFixed(2)} s` : sk.trick ? `${sk.trick.fail ? 'failing' : 'flipping'} ${TRICK_NAME[sk.trick.type]}` : sk.attempted ? 'used' : 'open';
+    const tr = sk.trick, win = tr ? `${tr.fail ? 'failing' : 'flipping'} ${TRICK_NAME[tr.type]}${tr.keys.length === 1 && tr.t < TR.flipWindow ? `, second press ${(TR.flipWindow - tr.t).toFixed(2)} s` : ''}` : sk.attempted ? 'used' : 'open';
     ui.dbg.textContent = `state ${sk.mode}\ncharge ${(sk.mode === 'charge' ? chargeFrac() : 0).toFixed(2)}\ncrouch ${(S.pose.crouch || 0).toFixed(2)}\napex ${apex.toFixed(2)} m\ntricks ${fits.join(', ') || 'none'}\nflip window ${win}\nair left ${left.toFixed(2)} s`;
   }
   function update(dt) {
     drawDebugOverlay();
-    if (isFrozen()) { writePose(sk.lean || 0); drawHitboxes(); return; }
+    if (st.paused) { writePose(sk.lean || 0); drawHitboxes(); return; }
     clock += dt;
     if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; if (!st.jumped && (st.noJumpT += dt) >= G.hints.holdAfter) hint('hold', 'Try holding Space'); }
     if (bot.on) { autopilot(); if (st.mode === 'playing') bot.time += dt; }
@@ -732,7 +730,6 @@ export function createGame(ctx) {
   for (const b of ['gCreditsBtn', 'gCreditsClose']) $(b).addEventListener('mousedown', (e) => e.preventDefault());   // a click never leaves keyboard focus on the button
   function press(a) {   // returns true if the action did something on this screen
     if (creditsOpen) { if (a === 'pause') showCredits(false); else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
-    if (st.countT > 0) return false;   // ignored during the 3-2-1
     if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); return true; } return false; }
     if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } if (a === 'credits') { showCredits(true); return true; } return false; }
     if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { startGame(); return true; } return false; }
@@ -764,8 +761,8 @@ export function createGame(ctx) {
 
   renderScores(); renderDiscoveries(); showScreens();
   return {
-    update, realTick, keydown, keyup, press, release,
-    get paused() { return isFrozen(); }, get mode() { return st.mode; }, get debug() { return debug; },
+    update, keydown, keyup, press, release,
+    get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
     st, sk, OBS, LANE_X, save, writeSave, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
