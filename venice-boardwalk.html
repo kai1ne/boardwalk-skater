@@ -58,10 +58,8 @@
   .card .btn:hover { background: #ffd84a; color: #111; }
   .screen:not(.show) * { pointer-events: none !important; }
   #gCredits { visibility: hidden; } #gCredits.show { visibility: visible; }
-  #gCredits .card { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 40px); display: flex; flex-direction: column; background-color: rgba(12,16,22,.86);
-    background-image: radial-gradient(circle at 12% 8%, #e4e21a 0 5px, transparent 6px), radial-gradient(circle at 18% 15%, #e4e21a 0 2px, transparent 3px), radial-gradient(circle at 86% 6%, #e4e21a 0 7px, transparent 8px), radial-gradient(circle at 92% 14%, #e4e21a 0 3px, transparent 4px), radial-gradient(circle at 78% 12%, #e4e21a 0 2px, transparent 3px), radial-gradient(circle at 7% 16%, #e4e21a 0 3px, transparent 4px); }
-  .card h2.gfx { margin: 0 0 12px; font: italic bold 54px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; color: transparent; background: linear-gradient(#e2cffb, #7ea0f5); -webkit-background-clip: text; background-clip: text;
-    -webkit-text-stroke: 1.5px #0c0c10; filter: drop-shadow(3px 4px 0 #0c0c10) drop-shadow(0 0 5px rgba(228,226,26,.75)); }
+  #gCredits .card { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 40px); display: flex; flex-direction: column; background: rgba(12,16,22,.86); }
+  .card h1 .logo.cr { width: min(440px, calc(100vw - 16px)); margin-top: -4px; }
   .card .roll { overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 0 8px; }
   .card .roll .u { text-transform: none; }
   .card .roll h3 { margin: 12px 0 2px; font-size: 13px; letter-spacing: 1px; color: #ffd84a; } .card .roll p { margin: 0; opacity: .9; }
@@ -122,10 +120,10 @@
   <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Scores can't be saved in this browser, so they last this session only</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
 <div id="gCredits" class="screen"><div class="card">
-  <h2 class="gfx">Credits</h2>
+  <h1><img class="logo over cr" src="assets/ui/credits-logo.png" alt="Credits"></h1>
   <div class="roll" id="gCreditsRoll">
     <h3>Game</h3><p>Made by Calvin Bak</p>
-    <h3>Title, Game Over and Paused logos</h3><p>AI-generated images</p>
+    <h3>Title, Game Over, Paused and Credits logos</h3><p>AI-generated images</p>
     <h3>Skin tones</h3><p>Monk Skin Tone Scale by Dr. Ellis Monk, released by Google<br>CC BY 4.0 · <span class="u">skintone.google</span></p>
     <h3>Characters and hair</h3><p>Universal Base Characters [Standard] by Quaternius<br>CC0 · <span class="u">quaternius.itch.io/universal-base-characters</span></p>
     <h3>Animation</h3><p>Universal Animation Library [Standard] by Quaternius, with animator Gonzalo Furnier<br>CC0 · <span class="u">quaternius.itch.io/universal-animation-library</span></p>

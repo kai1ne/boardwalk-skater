@@ -68,9 +68,9 @@ licence requires.
   claims newer Quaternius releases moved to a custom licence; I couldn't confirm that, and the files shipped
   here carry CC0 licence files.
 
-## Title, Game Over and Paused logos
+## Title, Game Over, Paused and Credits logos
 
-`assets/ui/title-logo.png`, `assets/ui/gameover-logo.png` and `assets/ui/paused-logo.png` are AI-generated images supplied by Calvin Bak.
+`assets/ui/title-logo.png`, `assets/ui/gameover-logo.png`, `assets/ui/paused-logo.png` and `assets/ui/credits-logo.png` are AI-generated images supplied by Calvin Bak.
 
 ## Procedural (canvas-generated, original)
 
