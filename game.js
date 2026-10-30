@@ -26,21 +26,31 @@ export function createGame(ctx) {
   const $ = (id) => document.getElementById(id);
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), count: $('gCount'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
-  // top-5 high scores, kept in this browser's localStorage (a run's name is asked for when it makes the list)
-  const HS_MAX = 5, HS_KEY = 'vbSkaterScores', cleanName = (v) => String(v).replace(/[^A-Za-z0-9]/g, '').slice(0, 10);
-  let scores = [];
-  try {
-    const raw = JSON.parse(localStorage.getItem(HS_KEY) || '[]');
-    if (Array.isArray(raw)) scores = raw.map((r) => ({ name: cleanName(r && r.name) || 'PLAYER', score: Math.floor(Number(r && r.score)) || 0 })).filter((r) => r.score > 0);
-    const old = Number(localStorage.getItem('vbSkaterBest')) || 0;   // carry over the best score from before the list existed
-    if (old && !scores.length) scores.push({ name: 'PLAYER', score: old });
-  } catch (e) { /* storage blocked: scores last this session only */ }
-  scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX);
+  // saved game: top scores, tricks discovered and hints shown, in localStorage under a versioned key. Bad or missing data
+  // starts fresh; if storage is blocked everything lives in memory for the session and the game-over screen says so.
+  const SV = G.save, cleanName = (v) => String(v).replace(/[^A-Za-z0-9]/g, '').slice(0, SV.nameMax);
+  const save = { scores: [], tricks: {}, hints: {} }; let storageOK = true;
+  const cleanScores = (raw) => (Array.isArray(raw) ? raw : []).map((r) => ({ name: cleanName(r && r.name) || 'PLAYER', score: Math.floor(Number(r && r.score)) || 0 })).filter((r) => r.score > 0);
+  function writeSave() { try { localStorage.setItem(SV.key, JSON.stringify(save)); storageOK = true; } catch (e) { storageOK = false; } }
+  (function readSave() {
+    let raw = null;
+    try { raw = localStorage.getItem(SV.key); } catch (e) { storageOK = false; return; }
+    if (raw !== null) { let d = null; try { d = JSON.parse(raw); } catch (e) { /* corrupted: start fresh */ }
+      if (d && typeof d === 'object') { save.scores = cleanScores(d.scores);
+        for (const t of [...TR.discover, TR.bonus]) if (d.tricks && d.tricks[t] === true) save.tricks[t] = true;
+        for (const h of ['hold', 'air']) if (d.hints && d.hints[h] === true) save.hints[h] = true; }
+    } else {   // first run on this version: carry over the scores saved by the older keys
+      let old = []; try { old = cleanScores(JSON.parse(localStorage.getItem(SV.oldScores) || '[]')); } catch (e) { /* unreadable: nothing to carry over */ }
+      const b = Number(localStorage.getItem(SV.oldBest)) || 0; if (b && !old.length) old.push({ name: 'PLAYER', score: b });
+      save.scores = old; if (old.length) writeSave(); }
+    if (storageOK) try { localStorage.setItem(SV.key + '.test', '1'); localStorage.removeItem(SV.key + '.test'); } catch (e) { storageOK = false; }
+    save.scores.sort((a, b) => b.score - a.score); save.scores.length = Math.min(save.scores.length, SV.topN);
+  })();
+  const scores = save.scores, HS_MAX = SV.topN;
   let best = scores.length ? scores[0].score : 0, entering = false, lastEntry = null;
   const qualifies = (n) => n > 0 && (scores.length < HS_MAX || n > scores[scores.length - 1].score);
-  function saveScores() { try { localStorage.setItem(HS_KEY, JSON.stringify(scores)); } catch (e) { /* storage blocked */ } }
   function renderScores() {
     for (const ol of ui.scores) { ol.textContent = ''; for (let i = 0; i < HS_MAX; i++) {
       const r = scores[i], li = document.createElement('li');
@@ -54,11 +64,11 @@ export function createGame(ctx) {
     e.stopPropagation();
     if (e.key === 'Enter' && !e.repeat) {
       lastEntry = { name: cleanName(ui.name.value) || 'PLAYER', score: st.score };
-      scores.push(lastEntry); scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX); saveScores();
+      scores.push(lastEntry); scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX); writeSave();
       entering = false; ui.name.blur(); showScreens(); renderScores();
     }
   });
-  const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
+  const st = { mode: 'title', paused: false, countT: 0, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
     mode: 'ground', t: 0, y: 0, vy: 0, airT: 0, airDur: 1, jumpF: 0, chargeT: 0, jumpHeld: false, flipOnPop: false,
@@ -333,7 +343,7 @@ export function createGame(ctx) {
     if (st.health <= 0) gameOver();
   }
   function startGame() {
-    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0 });
+    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, countT: 0, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], flip: null, attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
     if (ctx.onStart) { ctx.onStart(); if (ctx.phase && ctx.phaseNow) ctx.phaseNow(); }
@@ -341,7 +351,7 @@ export function createGame(ctx) {
   }
   function gameOver() {
     st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.flip = null; sk.invT = 0; S.hidden = false;
-    st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
+    renderDiscoveries(); st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
     entering = !bot.on && qualifies(st.score); ui.name.value = '';   // autopilot runs don't go on the list
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
   }
@@ -352,7 +362,17 @@ export function createGame(ctx) {
     ui.entry.style.display = asking ? 'block' : 'none'; ui.overGo.style.display = entering ? 'none' : '';
     if (asking && document.activeElement !== ui.name) ui.name.focus();
   }
-  function setPaused(p) { if (st.mode !== 'playing') p = false; st.paused = p; showScreens(); }
+  // pausing lets go of held keys and any charge; resuming runs a 3-2-1 with input ignored, then play picks up where it stopped
+  function setPaused(p) {
+    if (st.mode !== 'playing') { st.paused = false; st.countT = 0; }
+    else if (p) { st.paused = true; st.countT = 0; sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; if (sk.mode === 'charge') setMode('ground'); }
+    else if (st.paused) { st.paused = false; st.countT = G.pause.countdown; }
+    showScreens(); drawCount();
+  }
+  const isFrozen = () => st.paused || st.countT > 0;
+  function drawCount() { ui.count.style.display = st.countT > 0 ? 'flex' : 'none'; if (st.countT > 0) ui.count.textContent = Math.ceil(st.countT); document.body.classList.toggle('frozen', isFrozen()); }
+  function realTick(raw) { if (st.countT > 0) { st.countT = Math.max(0, st.countT - raw); drawCount(); } }   // the countdown runs on real time; the world is stopped
+  function autoPause() { if (st.mode === 'playing' && !bot.on) setPaused(true); }
 
   // -------------------------------------------------------------------------------------
   // Skater state machine: ground → charge (hold to jump higher) → air → land → ground,
@@ -379,7 +399,7 @@ export function createGame(ctx) {
     if (st.mode === 'playing') { f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); st.energy -= ollieCost(f); }
     const h = lerp(J.minHeight, J.maxHeight, f);
     setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
-    sk.tricks = []; sk.clearedThisJump = 0;
+    sk.tricks = []; sk.clearedThisJump = 0; st.jumped = true;
     sk.trick = null; sk.flip = null; sk.attempted = false;
   }
   // ↑/↓ in the air start a trick (one per jump): after the first press, wait up to flipWindow for a second press, then flip.
@@ -396,6 +416,17 @@ export function createGame(ctx) {
   }
   // the inputs that would land right now (the debug overlay and the autopilot read this)
   function availableFlips() { const left = sk.airDur - sk.airT; return Object.keys(TR.inputs).filter((k) => { const T = TR[TR.inputs[k]]; return sk.jumpH >= T.minApex && left - (k.length === 1 ? TR.flipWindow : 0) >= T.dur + TR.airMargin; }); }
+  // tricks discovered (saved); the bonus trick stays off the list until it's been landed
+  function renderDiscoveries() {
+    const n = TR.discover.filter((t) => save.tricks[t]).length;
+    ui.disc.innerHTML = `<b>Tricks discovered: ${n} / ${TR.discover.length}</b><br>${TR.discover.map((t) => (save.tricks[t] ? TRICK_NAME[t] : '<span class="q">???</span>')).join(' · ')}${save.tricks[TR.bonus] ? `<br><b>Bonus:</b> ${TRICK_NAME[TR.bonus]}` : ''}`;
+    ui.storeNote.style.display = storageOK ? 'none' : 'block';
+  }
+  // one-time hints, gone for good once any trick has been landed
+  function hint(key, text) {
+    if (bot.on || save.hints[key] || Object.keys(save.tricks).length) return;
+    save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
+  }
   function bail() {
     sk.trick = null; sk.flip = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
@@ -417,7 +448,8 @@ export function createGame(ctx) {
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
-    let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); }
+    let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); if (!bot.on && !save.tricks[t]) { save.tricks[t] = true; writeSave(); } }
+    if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', 'Try ↑ or ↓ in the air');
     const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');   // a trick's popup shows its own points; the score tag shows the jump's total
     popup(`${label}${over ? ' OVER' : ''} +${names.length ? trickPts * k * mult : pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
@@ -529,7 +561,7 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   // Hitbox debug (H)
   // -------------------------------------------------------------------------------------
-  let debug = false; const helpers = [];
+  let debug = false, dbgOn = false; const helpers = [];
   const COLORS = { solid: 0xff3030, jump: 0xffa020, slip: 0xffe040, skater: 0x30e0ff };
   function helper(i) { let h = helpers[i]; if (!h) { h = new THREE.Box3Helper(new THREE.Box3(), 0xffffff); h.material.depthTest = false; h.renderOrder = 10; scene.add(h); helpers[i] = h; } h.visible = true; return h; }
   function drawHitboxes() {
@@ -625,10 +657,19 @@ export function createGame(ctx) {
   // Main update
   // -------------------------------------------------------------------------------------
   let hudT = 0;
+  function apexIfReleased() { let f = chargeFrac(); if (st.mode === 'playing') f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); return lerp(J.minHeight, J.maxHeight, f); }
+  function drawDebugOverlay() {
+    ui.dbg.style.display = dbgOn ? 'block' : 'none'; if (!dbgOn) return;
+    const air = sk.mode === 'air', apex = sk.mode === 'charge' ? apexIfReleased() : air ? sk.jumpH : 0, left = air ? sk.airDur - sk.airT : 0;
+    const fits = [...TR.discover, TR.bonus].filter((t) => apex >= TR[t].minApex).map((t) => TRICK_NAME[t]);
+    const win = sk.flip ? `waiting ${sk.flip.keys} ${(TR.flipWindow - sk.flip.t).toFixed(2)} s` : sk.trick ? `${sk.trick.fail ? 'failing' : 'flipping'} ${TRICK_NAME[sk.trick.type]}` : sk.attempted ? 'used' : 'open';
+    ui.dbg.textContent = `state ${sk.mode}\ncharge ${(sk.mode === 'charge' ? chargeFrac() : 0).toFixed(2)}\ncrouch ${(S.pose.crouch || 0).toFixed(2)}\napex ${apex.toFixed(2)} m\ntricks ${fits.join(', ') || 'none'}\nflip window ${win}\nair left ${left.toFixed(2)} s`;
+  }
   function update(dt) {
-    if (st.paused) { writePose(sk.lean || 0); drawHitboxes(); return; }
+    drawDebugOverlay();
+    if (isFrozen()) { writePose(sk.lean || 0); drawHitboxes(); return; }
     clock += dt;
-    if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; }
+    if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; if (!st.jumped && (st.noJumpT += dt) >= G.hints.holdAfter) hint('hold', 'Try holding Space'); }
     if (bot.on) { autopilot(); if (st.mode === 'playing') bot.time += dt; }
     if (st.mode === 'over') { st.overT += dt; if (st.overT > G.overDelay && !ui.over.classList.contains('show')) showScreens(); }
     // title screen: cruise and throw the odd trick for show
@@ -680,6 +721,7 @@ export function createGame(ctx) {
   // every key goes through a named action (GAME.input); press / release are what touch controls can call later
   const ACTIONS = {}; for (const a in G.input) for (const k of G.input[a]) (ACTIONS[k] ||= []).push(a);
   function press(a) {   // returns true if the action did something on this screen
+    if (st.countT > 0) return false;   // ignored during the 3-2-1
     if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); return true; } return false; }
     if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } return false; }
     if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { startGame(); return true; } return false; }
@@ -698,20 +740,22 @@ export function createGame(ctx) {
     const k = e.key;
     if (k === 'h' || k === 'H') { debug = !debug; return true; }
     if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
+    if (k === 't' || k === 'T') { if (!e.repeat) dbgOn = !dbgOn; return true; }
     const acts = ACTIONS[k]; if (!acts) return false;
     if (acts[0] === 'credits') return !e.repeat && press('credits');   // C stays the debug camera unless a screen uses it
     if (!e.repeat) for (const a of acts) if (press(a)) break;
     return true;   // preventDefault on every game key, so arrows and Space never scroll the page
   }
   function keyup(e) { for (const a of ACTIONS[e.key] || []) release(a); }
-  window.addEventListener('blur', () => { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; setPaused(true); } });
+  // auto-pause when the window loses focus or the tab is hidden; it never resumes by itself
+  window.addEventListener('blur', autoPause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
 
-  renderScores(); showScreens();
+  renderScores(); renderDiscoveries(); showScreens();
   return {
-    update, keydown, keyup, press, release,
-    get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
+    update, realTick, keydown, keyup, press, release,
+    get paused() { return isFrozen(); }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
-    st, sk, OBS, LANE_X, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
+    st, sk, OBS, LANE_X, save, writeSave, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
 }

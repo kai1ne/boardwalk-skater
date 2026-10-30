@@ -37,6 +37,11 @@
   #gDist { font-size: 18px; font-weight: bold; font-variant-numeric: tabular-nums; }
   #gPops { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: 0; display: flex; flex-direction: column; align-items: center; }
   .pop { white-space: nowrap; font-size: 22px; font-weight: bold; animation: pop 1.1s ease-out forwards; }
+  .pop.hint { color: #ffd84a; font-size: 18px; animation: hint 4s ease-out forwards; }
+  @keyframes hint { 0% { opacity: 0; transform: translateY(8px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+  #gDbg { display: none; position: absolute; left: 14px; top: 120px; margin: 0; padding: 8px 10px; background: rgba(0,0,0,.55); border-radius: 6px; font: bold 12px/1.5 "Trebuchet MS", "Lucida Grande", sans-serif; white-space: pre; }
+  #gCount { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; pointer-events: none; font: bold 140px "Trebuchet MS", "Lucida Grande", sans-serif; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); }
+  .frozen .pop { animation-play-state: paused; }
   .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; } .pop.near { color: #b8ff6a; font-size: 19px; }
   #gBot { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); font: bold 13px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; color: #111; background: #ffd84a; padding: 3px 10px; border-radius: 4px; pointer-events: none; }
   @keyframes pop { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px); } }
@@ -65,6 +70,8 @@
   .card .hs li { display: flex; gap: 10px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.1); }
   .card .hs li .r { width: 18px; text-align: right; opacity: .6; } .card .hs li .n { flex: 1; text-align: left; font-weight: bold; }
   .card .hs li .s { font-variant-numeric: tabular-nums; } .card .hs li.empty { opacity: .35; } .card .hs li.me { color: #ffd84a; }
+  .card .disc { font-size: 12px; line-height: 1.5; margin-bottom: 12px; } .card .disc b { color: #ffd84a; letter-spacing: 1px; } .card .disc .q { opacity: .5; }
+  .card .note { display: none; font-size: 11px; opacity: .7; margin-bottom: 10px; }
   .card .entry { display: none; margin-bottom: 16px; pointer-events: auto; }
   .card .entry input { width: 200px; padding: 8px 10px; border-radius: 6px; border: 2px solid #ffd84a; background: rgba(0,0,0,.35); color: #fff;
                        font: bold 20px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-align: center; outline: none; }
@@ -88,7 +95,7 @@
 <div id="hud" class="off"></div>
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
-    <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div></div>
+    <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
 <div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
   <div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
@@ -97,8 +104,10 @@
   <div class="best">Best <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gOverScores"></ol></div>
+  <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Scores can't be saved in this browser, so they last this session only</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
-<div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="go">Press Enter, Space or Esc to resume</div></div></div>
+<div id="gCount"></div>
+<div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -156,6 +165,9 @@ const GAME = {
             threeSixty: { pts: 325, minApex: 0.85, dur: 0.32 }, impossible: { pts: 400, minApex: 0.95, dur: 0.36 },
             discover: ['kickflip', 'heelflip', 'threeSixty', 'impossible'], bonus: 'hardflip',   // the game-over list; the bonus trick stays hidden until landed
             bail: { invuln: 1.2, flickerHz: 12 } },   // after a failed trick (damage = a cone hit): s of invincibility, skater flicker rate
+  pause: { countdown: 3 },                 // s of 3-2-1 after resuming, with input ignored
+  hints: { holdAfter: 60, airAfter: 3 },   // s of play with no jump before "Try holding Space"; jumps with no trick attempt before "Try ↑ or ↓ in the air"
+  save: { key: 'boardwalkSkater.save.v1', oldScores: 'vbSkaterScores', oldBest: 'vbSkaterBest', topN: 5, nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
   health: { max: 100, hit: 35,             // fallback damage for an obstacle without its own `dmg` (each obstacle below sets one)
@@ -1975,15 +1987,15 @@ window.__vb = {
 // =====================================================================================
 const clock = new THREE.Timer(); clock.connect(document);
 Object.defineProperty(clock, 'elapsedTime', { get() { return clock.getElapsed(); } });
-let started = false;
+let started = false, worldT = 0;   // world time stops while paused, so waves, flags, dancers and birds hold still too
 function frame(ts) {
   requestAnimationFrame(frame); clock.update(ts);
-  const rawDt = clock.getDelta(); updateResolution(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
+  const rawDt = clock.getDelta(); updateResolution(rawDt); if (game) game.realTick(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
   step(Math.min(rawDt, 0.05) * __vb.timeScale * stop, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
 }
 function step(dt, t) {
-  if (game && game.paused) dt = 0;   // paused (Esc or hidden tab): the world holds still, rendering continues
-  U.time.value = t;
+  if (game && game.paused) dt = 0;   // paused or counting down: the world holds still, rendering continues
+  worldT += dt; t = worldT; U.time.value = t;
   if (!cyclePaused) cycleT += dt;
   computePhase(); applyPhase(dt);
   if (game) game.update(LINE.on || FITV.mode ? 0 : dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }   // the lineup holds the game still
