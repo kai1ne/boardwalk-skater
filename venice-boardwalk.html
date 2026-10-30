@@ -257,7 +257,8 @@ const GAME = {
   },
   crowd: { sideWalkers: 0.015 },           // share of the off-lane crowd kept (walkers, cyclists, sitters, performers): 0.015 ≈ as many people per side
                                            // strip as per lane; 1 = the full phase-1 crowd
-  score: { perMetre: 1, ollieMin: 25, ollieMax: 100,   // ollie points scale with jump height
+  score: { distance: [[0, 0], [100, 30], [500, 200], [1000, 500], [2000, 1200], [3000, 2500], [5000, 6000]],   // [feet, total points by then]: straight lines between marks, the last rate carries on past the end
+           ollieMin: 25, ollieMax: 100,   // ollie points scale with jump height
            overObstacle: 2,                // multiplier for a jump that cleared an obstacle
            clear: 75, comboMax: 8,         // the combo chains landed jumps and close calls; it resets on a hit or a wipeout
            nearMiss: 60, nearDist: 0.45,   // close call: passing within 0.45 m of an obstacle's hitbox without touching it
@@ -2017,7 +2018,7 @@ function frame(ts) {
 function step(dt, t) {
   if (game && game.paused) dt = 0;   // paused: the world holds still, rendering continues
   worldT += dt; t = worldT; U.time.value = t;
-  if (!cyclePaused) cycleT += dt;
+  if (!cyclePaused && !(game && game.mode === 'over')) cycleT += dt;   // the weather waits on the game-over screen, so the next run carries on from there
   computePhase(); applyPhase(dt);
   if (game) game.update(LINE.on || FITV.mode ? 0 : dt); else if (S.moving) { S.t += dt; S.z -= S.speed * dt; }   // the lineup holds the game still
   skater.position.set(S.x, 0, S.z);
@@ -2038,7 +2039,7 @@ loadMgr.onLoad = async () => {
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
   try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
-  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onStart: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onStart: every run starts in the overcast fog
+  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
   catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);

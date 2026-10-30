@@ -20,7 +20,7 @@ function wpick(obj) { let s = 0; for (const k in obj) s += obj[k]; let r = Math.
 const TRICK_NAME = { kickflip: 'KICKFLIP', heelflip: 'HEELFLIP', hardflip: 'HARDFLIP', threeSixty: '360 FLIP', impossible: 'IMPOSSIBLE' };
 
 export function createGame(ctx) {
-  const { scene, S, chars, IM, cfg: G, getPhaseName } = ctx;   // also ctx.phase (lighting phase state), ctx.shopsBetween, ctx.drawLeaf, ctx.onStart
+  const { scene, S, chars, IM, cfg: G, getPhaseName } = ctx;   // also ctx.phase (lighting phase state), ctx.shopsBetween, ctx.drawLeaf, ctx.onFirstRun
   const L = G.lanes, J = G.jump, H = G.hazards, SP = G.spawn, SC = G.score, TR = G.tricks, EN = G.energy, HP = G.health;
   const LANE_X = Array.from({ length: L.count }, (_, i) => (i - (L.count - 1) / 2) * L.width);
   const $ = (id) => document.getElementById(id);
@@ -321,6 +321,11 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   // Speed, scoring, health/energy, state changes
   // -------------------------------------------------------------------------------------
+  // total points for distance skated (metres in, feet on the table): straight lines between the marks in GAME.score.distance
+  function distancePoints(m) {
+    const ft = m * 3.28084, T = SC.distance; let i = 1; while (i < T.length - 1 && ft > T[i][0]) i++;
+    const [x0, y0] = T[i - 1], [x1, y1] = T[i]; return y0 + (ft - x0) * (y1 - y0) / (x1 - x0);
+  }
   function targetSpeed() {
     if (st.mode === 'title') return G.speed.title;
     if (st.mode === 'over') return 0;
@@ -346,7 +351,7 @@ export function createGame(ctx) {
     clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
-    if (ctx.onStart) { ctx.onStart(); if (ctx.phase && ctx.phaseNow) ctx.phaseNow(); }
+    if (!st.hasRun) { st.hasRun = true; if (ctx.onFirstRun) ctx.onFirstRun(); if (ctx.phaseNow) ctx.phaseNow(); }   // later runs carry on with the weather where it was
     ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
   }
   function gameOver() {
@@ -685,7 +690,7 @@ export function createGame(ctx) {
     else if (sk.speed < tgt) sk.speed = Math.min(tgt, sk.speed + G.speed.recoverRate * dt);
     else sk.speed = Math.max(tgt, sk.speed - (st.mode === 'over' ? G.speed.crashDecel : G.speed.recoverRate * 2) * dt);
     S.speed = sk.speed; S.moving = sk.speed > 0.05; const zPrev = S.z; S.z -= sk.speed * dt;
-    if (st.mode === 'playing') { st.dist += sk.speed * dt; st.score += sk.speed * dt * SC.perMetre; st.energy = Math.min(EN.max, st.energy + EN.regen * dt);
+    if (st.mode === 'playing') { const d0 = distancePoints(st.dist); st.dist += sk.speed * dt; st.score += distancePoints(st.dist) - d0; st.energy = Math.min(EN.max, st.energy + EN.regen * dt);
       // health slowly refills once you've gone a while without taking damage
       st.sinceHit += dt; if (st.sinceHit > HP.regenDelay) st.health = Math.min(HP.max, st.health + HP.regen * dt); }
 
@@ -764,6 +769,6 @@ export function createGame(ctx) {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
-    st, sk, OBS, LANE_X, save, writeSave, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
+    st, sk, OBS, LANE_X, save, writeSave, distancePoints, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
 }
