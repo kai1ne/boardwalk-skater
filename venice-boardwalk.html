@@ -7,70 +7,72 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
   canvas { display: block; }
-  #hud { position: fixed; left: 12px; bottom: 12px; font: 12px/1.45 -apple-system, Helvetica, Arial, sans-serif; color: #fff;
+  #hud { position: fixed; left: 12px; bottom: 12px; font: bold 12px/1.45 "Trebuchet MS", "Lucida Grande", sans-serif; color: #fff;
          background: rgba(0,0,0,.38); padding: 6px 10px; border-radius: 6px; pointer-events: none; user-select: none; }
-  #hud b { font-weight: 600; }
+  #hud b { font-weight: bold; }
   #hud.off { display: none; }
   #hud .k { opacity: .7; }
   /* ---- game HUD + screens ---- */
-  #ghud { position: fixed; inset: 0; pointer-events: none; user-select: none; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff;
+  #ghud { position: fixed; inset: 0; pointer-events: none; user-select: none; font-family: "Trebuchet MS", "Lucida Grande", sans-serif; color: #fff;
           text-shadow: 0 1px 3px rgba(0,0,0,.55); opacity: 0; transition: opacity .3s; }
   #ghud.show { opacity: 1; }
   #ghud .tl { position: absolute; left: 18px; top: 14px; }
   #ghud .tr { position: absolute; right: 18px; top: 14px; text-align: right; }
-  #gScoreLbl { font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: .85; margin-bottom: -2px; }
-  #gScore { font-size: 34px; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; transform-origin: left center; }
+  #gScoreLbl { font-size: 11px; font-weight: bold; letter-spacing: 2px; opacity: .85; margin-bottom: -2px; }
+  #gScore { font-size: 34px; font-weight: bold; letter-spacing: .5px; font-variant-numeric: tabular-nums; transform-origin: left center; }
   #gScore.flash { animation: scorePop .45s ease-out; }
   @keyframes scorePop { 0% { transform: scale(1); color: #fff; } 25% { transform: scale(1.22); color: #ffd84a; } 100% { transform: scale(1); color: #fff; } }
   .scoreRow { display: flex; align-items: baseline; gap: 10px; }
-  #gAdd { font-size: 20px; font-weight: 800; color: #ffd84a; opacity: 0; font-variant-numeric: tabular-nums; }
+  #gAdd { font-size: 20px; font-weight: bold; color: #ffd84a; opacity: 0; font-variant-numeric: tabular-nums; }
   #gAdd.flash { animation: addTag 1.3s ease-out forwards; }
   @keyframes addTag { 0% { opacity: 0; transform: translateY(6px) scale(.8); } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 25% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
-  #gCombo { font-size: 15px; font-weight: 700; color: #ffd84a; min-height: 18px; }
+  #gCombo { font-size: 15px; font-weight: bold; color: #ffd84a; min-height: 18px; }
   .meter { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
-  .meter .lbl { font-size: 11px; font-weight: 800; letter-spacing: 1px; opacity: .9; }
+  .meter .lbl { font-size: 11px; font-weight: bold; letter-spacing: 1px; opacity: .9; }
   .meter .bar { position: relative; width: 150px; height: 11px; border-radius: 6px; background: rgba(0,0,0,.42); box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); overflow: hidden; }
   .meter .bar > div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; transition: width .08s linear; }
   #gHealth { background: #4cd964; } #gEnergy { background: #45c8ff; } #gEnergyCost { background: rgba(10,40,70,.75); border-radius: 0 6px 6px 0; transition: none; }
   .meter .bar.flash { animation: mflash .45s ease-out; }
   @keyframes mflash { 0%, 60% { box-shadow: inset 0 0 0 2px #ff5050, 0 0 10px #ff5050; } 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); } }
-  #gDist { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #gDist { font-size: 18px; font-weight: bold; font-variant-numeric: tabular-nums; }
   #gPops { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: 0; display: flex; flex-direction: column; align-items: center; }
-  .pop { white-space: nowrap; font-size: 22px; font-weight: 800; animation: pop 1.1s ease-out forwards; }
+  .pop { white-space: nowrap; font-size: 22px; font-weight: bold; animation: pop 1.1s ease-out forwards; }
   .pop.flip { color: #7fe3ff; } .pop.bad { color: #ff8a8a; font-size: 18px; } .pop.near { color: #b8ff6a; font-size: 19px; }
-  #gBot { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); font: 800 13px -apple-system, Helvetica, Arial, sans-serif; letter-spacing: 2px; color: #111; background: #ffd84a; padding: 3px 10px; border-radius: 4px; pointer-events: none; }
+  #gBot { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); font: bold 13px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; color: #111; background: #ffd84a; padding: 3px 10px; border-radius: 4px; pointer-events: none; }
   @keyframes pop { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px); } }
   .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .35s;
-            font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
+            font-family: "Trebuchet MS", "Lucida Grande", sans-serif; color: #fff; }
   .screen.show { opacity: 1; }
   .card { background: rgba(12,16,22,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 14px; padding: 26px 34px; text-align: center;
           max-width: min(460px, calc(100vw - 32px)); box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
-  .card h1 { margin: 0 0 4px; font-size: 38px; font-weight: 900; letter-spacing: 1px; }
+  .card h1 { margin: 0 0 4px; font-size: 38px; font-weight: bold; letter-spacing: 1px; }
   .card h1 .logo { display: block; width: min(574px, calc(100vw - 16px)); height: auto; margin: -6px 0 6px 50%; transform: translateX(-50%); }   /* letters 1.5x the old boxed size; overhangs the card */
+  .card h1 .logo.over { width: min(520px, calc(100vw - 16px)); margin: -10px 0 4px 50%; }   /* the game-over graffiti */
   .card .credit { margin-top: 16px; font-size: 12px; opacity: .6; }
-  .card h2 { margin: 0 0 14px; font-size: 30px; font-weight: 900; }
-  .card .sub { opacity: .8; font-size: 14px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 14px; font-size: 30px; font-weight: bold; }
+  .card .sub { opacity: .8; font-size: 14px; margin-bottom: 18px; text-wrap: balance; }
   .card table { margin: 0 auto 18px; border-collapse: collapse; font-size: 14px; text-align: left; }
   .card td { padding: 3px 8px; } .card td:first-child { text-align: right; opacity: .75; white-space: nowrap; }
-  .card kbd { display: inline-block; min-width: 18px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); font: 600 12px/18px -apple-system, Helvetica, Arial, sans-serif; text-align: center; }
-  .card .go { font-size: 16px; font-weight: 700; animation: blink 1.4s ease-in-out infinite; }
-  .card .big { font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums; margin: 4px 0; }
+  .card kbd { display: inline-block; min-width: 18px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); font: bold 12px/18px "Trebuchet MS", "Lucida Grande", sans-serif; text-align: center; }
+  .card .go { font-size: 16px; font-weight: bold; animation: blink 1.4s ease-in-out infinite; }
+  .card .big { font-size: 46px; font-weight: bold; font-variant-numeric: tabular-nums; margin: 4px 0; }
   .card .best { opacity: .8; font-size: 15px; margin-bottom: 16px; }
-  .card .nb { color: #ffd84a; font-weight: 800; margin-bottom: 6px; }
+  .card .nb { color: #ffd84a; font-weight: bold; margin-bottom: 6px; }
   .card .keys { margin-bottom: 18px; } .card .keys kbd { font-size: 14px; line-height: 24px; padding: 2px 10px; margin: 0 2px; }
   .card .hs { margin: 0 auto 18px; width: 240px; }
-  .card .hsT { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd84a; margin-bottom: 6px; }
+  .card .hsT { font-size: 13px; font-weight: bold; letter-spacing: 2px; color: #ffd84a; margin-bottom: 6px; }
   .card .hs ol { list-style: none; margin: 0; padding: 0; font-size: 15px; }
   .card .hs li { display: flex; gap: 10px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.1); }
-  .card .hs li .r { width: 18px; text-align: right; opacity: .6; } .card .hs li .n { flex: 1; text-align: left; font-weight: 600; }
+  .card .hs li .r { width: 18px; text-align: right; opacity: .6; } .card .hs li .n { flex: 1; text-align: left; font-weight: bold; }
   .card .hs li .s { font-variant-numeric: tabular-nums; } .card .hs li.empty { opacity: .35; } .card .hs li.me { color: #ffd84a; }
   .card .entry { display: none; margin-bottom: 16px; pointer-events: auto; }
   .card .entry input { width: 200px; padding: 8px 10px; border-radius: 6px; border: 2px solid #ffd84a; background: rgba(0,0,0,.35); color: #fff;
-                       font: 700 20px -apple-system, Helvetica, Arial, sans-serif; letter-spacing: 2px; text-align: center; outline: none; }
+                       font: bold 20px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-align: center; outline: none; }
   .card .entry .hint { font-size: 12px; opacity: .6; margin-top: 6px; }
   @keyframes blink { 50% { opacity: .45; } }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #cfd5db;
-             font: 15px -apple-system, Helvetica, Arial, sans-serif; color: #333; transition: opacity .6s; }
+             font: bold 15px "Trebuchet MS", "Lucida Grande", sans-serif; color: #333; transition: opacity .6s; }
+  #hud, #ghud, #gBot, .screen, #loading, .card input { font-weight: bold; text-transform: uppercase; }   /* all UI text: bold Trebuchet MS in capitals */
 </style>
 <script type="importmap">
 {
@@ -91,7 +93,7 @@
   <div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
   <div class="go">Press Enter or Space to start</div><div class="credit">Made by Calvin Bak</div></div></div>
-<div id="gOver" class="screen"><div class="card"><h2>GAME OVER</h2><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
+<div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.png" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Best <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gOverScores"></ol></div>
