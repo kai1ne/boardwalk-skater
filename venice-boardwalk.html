@@ -106,6 +106,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeVehicle } from './vehicles.js';
 
 // =====================================================================================
 // CONFIG — phase 1 is desktop only. A mobile profile slots in here later (lower shadow
@@ -150,27 +151,29 @@ const GAME = {
             kickflip: { pts: 150 }, heelflip: { pts: 175 }, hardflip: { pts: 250 }, threeSixty: { pts: 325 }, impossible: { pts: 400 } },
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
-  health: { max: 100, hit: 34,             // damage from running into an obstacle (3 hits = game over)
+  health: { max: 100, hit: 35,             // fallback damage for an obstacle without its own `dmg` (each obstacle below sets one)
             slip: 10,                      // damage from slipping on pizza or poop (not if you jump within the coyote window)
             fall: 20,                      // damage from a wipeout
-            regenDelay: 8, regen: 1.5 },   // after 8 s without damage, health refills at 1.5 per second (a 34 hit back in ~23 s)
+            regenDelay: 8, regen: 1.5 },   // after 8 s without damage, health refills at 1.5 per second (a 35 hit back in ~23 s)
   hazards: { shake: 0.3, hitStop: 0.07, stumbleTime: 0.4, slipTime: 0.95, bailTime: 0.8 },   // shake = s of camera shake on a hit; hitStop = s the action freezes
   skaterBox: { w: 0.5, d: 0.9, h: 1.75 },  // collision box (m)
-  obstacles: {                             // hitbox sizes (m); clear = board height needed to pass over (null = can't be jumped)
-    ped:        { kind: 'solid', w: 0.6, h: 1.8, d: 0.5, clear: null },
-    bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null },   // cyclist riding along a lane
-    skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null },   // skater cruising along a lane
-    selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null },   // influencer, phone up
-    smokers:    { kind: 'solid', w: 1.3, h: 1.8, d: 1.2, clear: null },   // one to three people standing in a lane, smoking
-    performer:  { kind: 'solid', w: 2.0, h: 1.8, d: 4.0, clear: null },   // busker + small crowd on a rug, outer lanes only
-    dog:        { kind: 'solid', w: 0.7, h: 0.62, d: 0.7, clear: 0.35 },  // the dog end of a leash pair: a short-to-medium ollie clears it
-    leashCord:  { kind: 'solid', w: 1.0, h: 1.0, d: 0.25, clear: 0.45 },  // the lead between owner and dog (w is set from the gap); jumpable. The owner can't be jumped
-    can:        { kind: 'solid', w: 1.0, h: 0.66, d: 0.7, clear: 0.5 },
-    cones:      { kind: 'solid', w: 1.35, h: 0.72, d: 0.9, clear: 0.55 },
+  obstacles: {                             // hitbox sizes (m); clear = board height needed to pass over (null = can't be jumped); dmg = health lost on a hit
+    ped:        { kind: 'solid', w: 0.6, h: 1.8, d: 0.5, clear: null, dmg: 35 },
+    bike:       { kind: 'solid', w: 0.7, h: 1.8, d: 1.9, clear: null, dmg: 35 },   // cyclist riding along a lane
+    skater:     { kind: 'solid', w: 0.6, h: 1.8, d: 1.0, clear: null, dmg: 35 },   // skater cruising along a lane
+    selfie:     { kind: 'solid', w: 0.7, h: 1.8, d: 0.6, clear: null, dmg: 35 },   // influencer, phone up
+    smokers:    { kind: 'solid', w: 1.3, h: 1.8, d: 1.2, clear: null, dmg: 35 },   // one to three people standing in a lane, smoking
+    performer:  { kind: 'solid', w: 2.0, h: 1.8, d: 4.0, clear: null, dmg: 35 },   // busker or breakdancers + small crowd, outer lanes only
+    dog:        { kind: 'solid', w: 0.7, h: 0.62, d: 0.7, clear: 0.35, dmg: 20 },  // the dog end of a leash pair: a short-to-medium ollie clears it
+    leashCord:  { kind: 'solid', w: 1.0, h: 1.0, d: 0.25, clear: 0.45, dmg: 20 },  // the lead between owner and dog (w is set from the gap); jumpable. The owner can't be jumped
+    can:        { kind: 'solid', w: 1.0, h: 0.66, d: 0.7, clear: 0.5, dmg: 25 },
+    cones:      { kind: 'solid', w: 1.35, h: 0.72, d: 0.9, clear: 0.55, dmg: 20 },
+    sign:       { kind: 'solid', w: 0.8, h: 1.0, d: 0.75, clear: 0.62, dmg: 25 },  // a shop's stand-up sign in the right-hand lane (open phases only)
     pizza:      { kind: 'slip', w: 0.9, h: 0.05, d: 1.0, clear: 0.12 },
     poop:       { kind: 'slip', w: 0.7, h: 0.12, d: 0.7, clear: 0.12 },
-    crossBike:  { kind: 'solid', w: 1.8, h: 1.8, d: 0.7, clear: null },   // w is along x: they ride across the lanes
-    crossSkate: { kind: 'solid', w: 1.0, h: 1.8, d: 0.7, clear: null },
+    crossBike:  { kind: 'solid', w: 1.8, h: 1.8, d: 0.7, clear: null, dmg: 35 },   // w is along x: they ride across the lanes
+    crossSkate: { kind: 'solid', w: 1.0, h: 1.8, d: 0.7, clear: null, dmg: 35 },
+    vehicle:    { kind: 'solid', w: 2.1, h: 2.0, d: 5.4, clear: null, dmg: 35 },   // police SUV / lifeguard pickup rolling up the boardwalk across two lanes
   },
   spawn: { ahead: 70, aheadTime: 3.5,     // rows are spawned at least 70 m and at least 3.5 s ahead of the skater
            despawn: 8,                     // m behind the skater that they are recycled
@@ -189,7 +192,7 @@ const GAME = {
   //   moverScale: speed of riders · pedStop / pedDrift: share of walkers who stop or drift a lane ·
   //   skaterChange: share of skaters who change lane · selfieWalk: share of influencers walking backward · leashPlus: chance of an extra blocker with a leash
   director: {
-    peopleShare: 0.7,                      // blockers are people this often (the rest cans, cones, pizza, poop)
+    peopleShare: 0.7,                      // blockers are people this often (the rest cans, cones, pizza, poop), scaled down by the phase's crowd level
     jumpMargin: 0.1, jumpSlack: 0.3,       // validator: a jump must clear by this much height (m) and distance (m) at the current speed
     hazardLineGap: [6, 9],                 // m from a hazard line to the jumpable in its gap
     stages: [
@@ -197,13 +200,13 @@ const GAME = {
         pedStop: 0, pedDrift: 0, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
       { from: 250,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'smokers'], patterns: { single: 0.5, pair: 0.32, hazardLine: 0.18 }, gap: [1.3, 1.6], moverScale: 0.9,
         pedStop: 0.2, pedDrift: 0.1, skaterChange: 0, selfieWalk: 0, leashPlus: 0 },
-      { from: 600,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers'], patterns: { single: 0.32, pair: 0.3, triple: 0.06, hazardLine: 0.14, performerSide: 0.18 },
+      { from: 600,  types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'vehicle'], patterns: { single: 0.32, pair: 0.3, triple: 0.06, hazardLine: 0.14, performerSide: 0.18, vehicle: 0.05 },
         gap: [1.15, 1.4], moverScale: 1.0, pedStop: 0.25, pedDrift: 0.15, skaterChange: 0.3, selfieWalk: 0.3, leashPlus: 0 },
-      { from: 1000, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross'],
-        patterns: { single: 0.2, pair: 0.27, triple: 0.12, hazardLine: 0.1, performerSide: 0.12, leash: 0.14, cross: 0.05 }, gap: [1.05, 1.25], moverScale: 1.15,
+      { from: 1000, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross', 'vehicle'],
+        patterns: { single: 0.2, pair: 0.27, triple: 0.12, hazardLine: 0.1, performerSide: 0.12, leash: 0.14, cross: 0.05, vehicle: 0.06 }, gap: [1.05, 1.25], moverScale: 1.15,
         pedStop: 0.25, pedDrift: 0.2, skaterChange: 0.4, selfieWalk: 0.4, leashPlus: 0.3 },
-      { from: 1600, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross'],
-        patterns: { single: 0.12, pair: 0.3, triple: 0.2, hazardLine: 0.1, performerSide: 0.1, leash: 0.13, cross: 0.05 }, gap: [1.0, 1.1], moverScale: 1.3,
+      { from: 1600, types: ['ped', 'cones', 'can', 'pizza', 'poop', 'bike', 'performer', 'skater', 'selfie', 'smokers', 'leash', 'cross', 'vehicle'],
+        patterns: { single: 0.12, pair: 0.3, triple: 0.2, hazardLine: 0.1, performerSide: 0.1, leash: 0.13, cross: 0.05, vehicle: 0.06 }, gap: [1.0, 1.1], moverScale: 1.3,
         pedStop: 0.3, pedDrift: 0.25, skaterChange: 0.5, selfieWalk: 0.4, leashPlus: 0.5 },
     ],
   },
@@ -472,6 +475,20 @@ const SIGN_TEXT = ['SUNSET TEES', 'WAVE SHACK', 'HENNA ART', 'SHADES & HATS', 'P
   'INK & IRON', 'CHEAP • FAST • EASY', 'RETAIL SPACE', 'GULL\'S NEST', 'BOARDWALK BIKES', 'ALL ELECTRIC', 'SKATES • BIKES', 'FROYO', 'SALTY DOG', 'LUCKY 7', 'DREAM ROLLS', 'NOW OPEN', 'TACOS', 'TATTOO'];
 const FONTS = ['Impact', 'Arial Black', 'Georgia', 'Marker Felt', 'Chalkduster', 'Futura', 'Copperplate', 'American Typewriter', 'Rockwell', 'Trebuchet MS', 'Brush Script MT', 'Courier New', 'Cooper Black', 'Helvetica Neue'];
 const SIGN_BG = ['#f6f1e4', '#ffd93b', '#e8322b', '#1f5fb8', '#ffffff', '#111111', '#2a9d5c', '#f08a24', '#7b2d8b', '#fbe7a1', '#9ad3e8', '#f7c6d0', '#0e3d68', '#c8102e'];
+// a cannabis leaf: seven serrated leaflets fanning from the stem, s = overall height, centred on (cx, cy)
+function drawLeaf(x, cx, cy, s, col) {
+  x.save(); x.translate(cx, cy + s * 0.32); x.fillStyle = col;
+  for (const [a, l] of [[0, 1], [0.48, 0.84], [-0.48, 0.84], [0.98, 0.64], [-0.98, 0.64], [1.55, 0.36], [-1.55, 0.36]]) {
+    x.save(); x.rotate(a); const L = s * 0.66 * l, W = L * 0.15; x.beginPath(); x.moveTo(0, 0);
+    for (let k = 1; k <= 14; k++) { const t = k / 14, w = W * Math.pow(Math.sin(Math.PI * Math.min(t * 1.08, 1)), 0.8) * (k % 2 ? 1.25 : 0.85); x.lineTo(w, -L * t); }
+    for (let k = 14; k >= 0; k--) { const t = k / 14, w = W * Math.pow(Math.sin(Math.PI * Math.min(t * 1.08, 1)), 0.8) * (k % 2 ? 1.25 : 0.85); x.lineTo(-w, -L * t); }
+    x.fill(); x.restore(); }
+  x.fillRect(-s * 0.018, 0, s * 0.036, s * 0.22); x.restore();
+}
+// shop kinds that put a stand-up sign out (game.js draws the signs): the header-sign cells that belong to each
+const WEED_CELLS = [27, 49];   // repainted as dispensary signs below
+const SHOP_CELLS = { tattoo: [7, 50, 63], pizza: [13], coffee: [43], sunglasses: [22, 3], weed: WEED_CELLS };
+const anySign = () => { const c = randi(0, 63); return WEED_CELLS.includes(c) ? c + 1 : c; };   // a random header that isn't a dispensary
 function fitText(x, text, font, weight, maxW, maxH) { let s = maxH; x.font = `${weight} ${s}px "${font}"`; while (x.measureText(text).width > maxW && s > 10) { s -= 2; x.font = `${weight} ${s}px "${font}"`; } return s; }
 {
   const [c, x] = makeCanvas(2048, 2048); R = mulberry32(202);
@@ -487,6 +504,13 @@ function fitText(x, text, font, weight, maxW, maxH) { let s = maxH; x.font = `${
     x.fillStyle = fg; x.fillText(text, cx + 256, cy + 66);
     // weathering
     for (let k = 0; k < 40; k++) { x.fillStyle = `rgba(80,70,60,${rand(0.02, 0.08)})`; x.fillRect(cx + rand(0, 512), cy + rand(0, 128), rand(2, 30), rand(1, 4)); }
+  }
+  // two cells are repainted as dispensary signs (green, white lettering, a leaf at each end)
+  for (const [i, text] of [[WEED_CELLS[0], 'DISPENSARY'], [WEED_CELLS[1], 'CANNABIS']]) {
+    const cx = (i % 4) * 512, cy = Math.floor(i / 4) * 128; x.fillStyle = i === WEED_CELLS[0] ? '#1f7a3a' : '#f4f1e6'; x.fillRect(cx, cy, 512, 128);
+    x.strokeStyle = i === WEED_CELLS[0] ? '#ffffff' : '#1f7a3a'; x.lineWidth = 6; x.strokeRect(cx + 7, cy + 7, 498, 114);
+    drawLeaf(x, cx + 62, cy + 64, 92, i === WEED_CELLS[0] ? '#7ee07a' : '#2e9a3e'); drawLeaf(x, cx + 450, cy + 64, 92, i === WEED_CELLS[0] ? '#7ee07a' : '#2e9a3e');
+    fitText(x, text, 'Futura', 'bold', 300, 64); x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = i === WEED_CELLS[0] ? '#ffffff' : '#1f7a3a'; x.fillText(text, cx + 256, cy + 68);
   }
   CT.signs = canvasTex(c);
 }
@@ -939,7 +963,13 @@ function awningGeo(len, depth, drop, folds = true) {
   g.computeVertexNormals(); return g;
 }
 function stall(b, props, zc, w) {
-  const h = rand(3.0, 3.8), hO = h - rand(0.85, 1.2), D = 5.4, rec = 1.5, pw = 0.28; const col = pick(WALL_COLS);
+  const h = rand(3.0, 3.8), hO = h - rand(0.85, 1.2), D = 5.4, rec = 1.5, pw = 0.28; let col = pick(WALL_COLS);
+  // about a quarter of the stalls are shops that put a stand-up sign out when open; dispensaries are painted green
+  const shop = chance(0.26) ? pick(['tattoo', 'pizza', 'coffee', 'sunglasses', 'weed', 'weed']) : null;
+  if (shop === 'weed') col = pick(['#3f9a4a', '#2f7d3a', '#5bb35f', '#7cc576']);
+  const header = shop ? pick(SHOP_CELLS[shop]) : anySign();
+  if (shop) props.push({ t: 'shop', kind: shop, z: zc });
+  props.push({ t: 'front', x: F - 0.2, z: zc, w });
   b.add('wall', xform(boxG(D - rec, h, w - 0.04, 2), F + rec + (D - rec) / 2, h / 2, zc), col);
   for (const s of [-1, 1]) b.add('wall', xform(boxG(rec, h, pw, 2), F + rec / 2, h / 2, zc + s * (w / 2 - pw / 2 - 0.02)), col);
   b.add('wall', xform(boxG(rec, h - hO, w - 2 * pw, 2), F + rec / 2, hO + (h - hO) / 2, zc), col);
@@ -950,23 +980,23 @@ function stall(b, props, zc, w) {
   for (let k = 0; k < Math.floor(iw / 0.5); k++) b.add('trim', xform(boxG(0.03, 0.55, 0.42), F + 0.35, hO - 0.45, zc - iw / 2 + 0.3 + k * 0.5, 0, rand(-0.2, 0.2), 0), pick(GCOLS));
   if (chance(0.3)) for (let k = 0; k < 7; k++) b.add('trim', xform(boxG(0.02, 0.78, 0.2), F + 1.45, 1.35, zc - 1 + k * 0.28), pick(GCOLS));
   // roll-up shutter + housing
-  b.add('shutter', xform(planeAtlas(iw, hO, randi(0, 15), 4, 4), F + 0.07, hO / 2, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [hO, chance(0.85) ? 1 : 0] });
+  b.add('shutter', xform(planeAtlas(iw, hO, randi(0, 15), 4, 4), F + 0.07, hO / 2, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [hO, (chance(0.85), 1)] });
   b.add('metal', xform(boxG(0.32, 0.3, iw), F + 0.22, hO - 0.15, zc), '#8a8f94');
   // corrugated roof
   const rg = new THREE.PlaneGeometry(D + 0.9, w); { const uv = rg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (D + 0.9) / 2, uv.getY(i) * w / 2); }
   rg.rotateX(-Math.PI / 2); rg.rotateZ(0.06); rg.translate(F + (D - 0.9) / 2, h + 0.18, zc); b.add('roof', rg, pick(ROOF_COLS));
   // header sign
-  const sh = h - hO; b.add('sign', xform(planeAtlas(w - 2 * pw - 0.15, sh - 0.18, randi(0, 63), 4, 16), F - 0.012, hO + sh / 2, zc, 0, -Math.PI / 2, 0));
+  const sh = h - hO; b.add('sign', xform(planeAtlas(w - 2 * pw - 0.15, sh - 0.18, header, 4, 16), F - 0.012, hO + sh / 2, zc, 0, -Math.PI / 2, 0));
   // roof-mounted sign board
   if (chance(0.35)) { const bw = w * rand(0.7, 0.95), bh = rand(0.8, 1.2), y0 = h + 0.25;
     for (const s of [-1, 1]) b.add('metal', xform(boxG(0.08, bh + 0.3, 0.08), F + 0.35, y0 + (bh + 0.3) / 2, zc + s * bw * 0.4), '#555a5e');
-    b.add('sign', xform(planeAtlas(bw, bh, randi(0, 63), 4, 16), F + 0.3, y0 + 0.3 + bh / 2, zc, 0, -Math.PI / 2, 0));
+    b.add('sign', xform(planeAtlas(bw, bh, shop === 'weed' ? pick(WEED_CELLS) : anySign(), 4, 16), F + 0.3, y0 + 0.3 + bh / 2, zc, 0, -Math.PI / 2, 0));
     b.add('trim', xform(boxG(0.05, bh + 0.08, bw + 0.08), F + 0.33, y0 + 0.3 + bh / 2, zc), '#333'); }
   // fabric awning
   if (chance(0.4)) { const ac = pick(AWN_COLS); b.add('awning', xform(awningGeo(w - 0.4, rand(1.0, 1.5), rand(0.45, 0.7)), F, hO - 0.02, zc), ac);
     b.add('awning', xform(new THREE.PlaneGeometry(w - 0.4, 0.22), F - 1.2, hO - 0.7, zc, 0, -Math.PI / 2, 0), ac); }
   // vertical blade sign
-  if (chance(0.22)) { const sy = hO - 1.3; for (const ry of [0, Math.PI]) b.add('sign', xform(planeAtlas(0.55, 2.2, randi(0, 63), 4, 16, true), F - 0.4, sy, zc + w / 2 - 0.2 + (ry ? -0.01 : 0.01), 0, ry, 0));
+  if (chance(0.22)) { const sy = hO - 1.3; for (const ry of [0, Math.PI]) b.add('sign', xform(planeAtlas(0.55, 2.2, anySign(), 4, 16, true), F - 0.4, sy, zc + w / 2 - 0.2 + (ry ? -0.01 : 0.01), 0, ry, 0));
     b.add('metal', xform(boxG(0.7, 0.05, 0.05), F - 0.35, sy + 1.15, zc + w / 2 - 0.2), '#444'); }
   // rooftop clutter
   if (chance(0.35)) b.add('metal', xform(boxG(0.9, 0.6, 0.8), F + rand(2.5, 4.5), h + 0.5, zc + rand(-w / 3, w / 3)), '#b8bcbf');
@@ -1005,7 +1035,7 @@ function backBuilding(b, props, x0, zc, w, floors, col) {
       for (let k = 0; k <= Math.floor(w * 0.7 / 0.15); k++) b.add('metal', xform(boxG(0.025, 0.95, 0.025), x0 - 1.05, f * fh + 0.95, zc - w * 0.35 + k * 0.15), '#2b2b2b');
       b.add('metal', xform(boxG(0.05, 0.05, w * 0.7), x0 - 1.05, f * fh + 1.45, zc), '#2b2b2b'); }
   }
-  if (chance(0.3)) b.add('sign', xform(planeAtlas(Math.min(w * 0.7, 6), 1.1, randi(0, 63), 4, 16), x0 - 0.02, (floors - 1) * fh + 0.45 + 3.6 - 0.2, zc, 0, -Math.PI / 2, 0));
+  if (chance(0.3)) b.add('sign', xform(planeAtlas(Math.min(w * 0.7, 6), 1.1, anySign(), 4, 16), x0 - 0.02, (floors - 1) * fh + 0.45 + 3.6 - 0.2, zc, 0, -Math.PI / 2, 0));
   // rooftop clutter
   for (let k = 0; k < randi(0, 3); k++) b.add('metal', xform(boxG(rand(0.8, 1.6), rand(0.6, 1.1), rand(0.8, 1.4)), x0 + rand(2, d - 1), h + 0.4, zc + rand(-w / 3, w / 3)), pick(['#b8bcbf', '#9fa3a6', '#d0d2d0']));
   if (chance(0.25)) { const tx = x0 + rand(3, d - 2), tz = zc + rand(-w / 4, w / 4); b.add('metal', xform(cylG(0.9, 0.9, 1.6, 12), tx, h + 2.0, tz), '#8a7f72');
@@ -1046,7 +1076,7 @@ function arcade(b, props, z0, nb) {
   for (let i = 0; i < nb; i++) { const zc = z0 - (i + 0.5) * bay; const plain = randi(0, 15);
     b.add('merch', xform(planeAtlas(bay - 0.6, 3.0, randi(0, 3), 2, 2), F + 3.48, 1.5, zc, 0, -Math.PI / 2, 0));
     b.add('shutter', xform(planeAtlas(bay - 0.6, 3.0, plain, 4, 4), F + 3.44, 1.5, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3.0, 1] });
-    b.add('metal', xform(boxG(0.3, 0.32, bay - 0.4), F + 3.3, 3.12, zc), '#7d8388');
+    b.add('metal', xform(boxG(0.3, 0.32, bay - 0.4), F + 3.3, 3.12, zc), '#7d8388'); props.push({ t: 'front', x: F + 3.0, z: zc, w: bay - 0.6 });
     // accordion gates between columns (some folded open)
     const gw = chance(0.7) ? bay - 0.5 : rand(0.5, 1.0); const gg = planeTiled(gw, 2.7, 0.9); b.add('gate', xform(gg, F + 0.32, 1.38, zc - (bay - 0.5 - gw) / 2, 0, -Math.PI / 2, 0));
     b.add('metal', xform(boxG(0.05, 0.05, gw), F + 0.32, 2.75, zc - (bay - 0.5 - gw) / 2), '#7d8388');
@@ -1081,6 +1111,7 @@ function cafe(b, props, z0, L) {
     b.add('bulb', xform(new THREE.SphereGeometry(0.045, 6, 4), F - 0.38, 2.78 - sag, zz)); }
     b.add('metal', xform(boxG(0.015, 0.015, 4), F - 0.38, 2.68, z - 2), '#222'); }
   props.push({ t: 'sandwich', x: F - 0.9, z: z0 - L * 0.3, ry: Math.PI / 2 + 0.4 });
+  props.push({ t: 'shop', kind: 'coffee', z: z0 - L * 0.5 }); for (let z = z0 - 3; z > z0 - L + 2; z -= 6) props.push({ t: 'front', x: F - 0.5, z, w: 4 });
 }
 function muralBlock(b, props, z0, L) {
   const col = '#2a5fd0', H = 10.4; b.add('wall', xform(boxG(12.6, H, L, 2), F + 0.3 + 6.3, H / 2, z0 - L / 2), col);
@@ -1093,11 +1124,11 @@ function muralBlock(b, props, z0, L) {
     b.add('merch', xform(planeAtlas(w - 0.3, 3.0, randi(0, 3), 2, 2), F + 0.8, 1.5, zc, 0, -Math.PI / 2, 0));
     b.add('wall', xform(boxG(0.55, 3.0, 0.15), F + 0.55, 1.5, zc - w / 2 + 0.07), col);
     b.add('shutter', xform(planeAtlas(w - 0.3, 3.0, randi(0, 2), 4, 4), F + 0.26, 1.5, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3.0, 1] });
-    b.add('awning', xform(awningGeo(w - 0.2, 1.1, 0.55), F + 0.28, 3.55, zc), '#0e2d5c'); z -= w; }
+    b.add('awning', xform(awningGeo(w - 0.2, 1.1, 0.55), F + 0.28, 3.55, zc), '#0e2d5c'); props.push({ t: 'front', x: F + 0.1, z: zc, w: w - 0.3 }); z -= w; }
   b.add('mural', xform(planeAtlas(2.6, 3.4, 1, 2, 1), F + 0.27, 5.3, z0 - mL - shL * 0.5, 0, -Math.PI / 2, 0));
   for (let f = 1; f < 3; f++) { const n = Math.floor(L / 3.2); for (let i = 0; i < n; i++) { const zz = z0 - (i + 0.5) * L / n; if (f === 1 && Math.abs(zz - (z0 - mL - shL * 0.5)) < 1.8) continue; windowAt(b, F + 0.3, f * 3.4 + 1.6, zz, 1.4, 1.6); } }
   b.add('sign', xform(planeAtlas(5.5, 1.1, 52, 4, 16), F + 0.28, 4.1, z0 - L * 0.72, 0, -Math.PI / 2, 0));
-  b.add('sign', xform(planeAtlas(4.2, 0.9, randi(0, 63), 4, 16), F + 0.28, 4.1, z0 - L * 0.25, 0, -Math.PI / 2, 0));
+  b.add('sign', xform(planeAtlas(4.2, 0.9, anySign(), 4, 16), F + 0.28, 4.1, z0 - L * 0.25, 0, -Math.PI / 2, 0));
   b.add('billboard', xform(planeAtlas(3.4, 3.4 * 0.5, 2, 2, 2), F + 0.28, 8.6, z0 - L * 0.85, 0, -Math.PI / 2, 0));
 }
 function cornerBlock(b, props) {
@@ -1110,14 +1141,15 @@ function cornerBlock(b, props) {
   // red corner building
   const red = '#b8322a'; const x0 = F + 0.3; b.add('wall', xform(boxG(12, 7.4, 13.2, 2), x0 + 6, 3.7, -33.2), red);
   b.add('trim', xform(boxG(0.4, 0.3, 13.2), x0, 7.25, -33.2), '#ffffff');
-  for (let i = 0; i < 3; i++) { const zc = -27.8 - i * 4.2; b.add('shutter', xform(planeAtlas(3.6, 3.0, randi(3, 15), 4, 4), x0 - 0.02, 1.5, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3, 0] }); windowAt(b, x0, 5.2, zc, 1.3, 1.5); }
-  b.add('sign', xform(planeAtlas(4.4, 0.9, 50, 4, 16), x0 - 0.03, 3.6, -30, 0, -Math.PI / 2, 0));
+  for (let i = 0; i < 3; i++) { const zc = -27.8 - i * 4.2; b.add('shutter', xform(planeAtlas(3.6, 3.0, randi(3, 15), 4, 4), x0 - 0.02, 1.5, zc, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3, 1] }); windowAt(b, x0, 5.2, zc, 1.3, 1.5); }
+  b.add('sign', xform(planeAtlas(4.4, 0.9, 50, 4, 16), x0 - 0.03, 3.6, -30, 0, -Math.PI / 2, 0));   // INK & IRON: a tattoo parlour
+  props.push({ t: 'shop', kind: 'tattoo', z: -30 }); for (let i = 0; i < 3; i++) props.push({ t: 'front', x: x0 - 0.2, z: -27.8 - i * 4.2, w: 3.6 });
   for (let i = 0; i < 3; i++) windowAt2(b, x0 + 2 + i * 3.5, 5.2, -26.6, 1.3, 1.5);
   b.add('mural', xform(planeAtlas(6, 3, 1, 2, 1), x0 + 7.5, 1.8, -26.58), '#ffffff');
   // blue building across the street with billboards
   const blue = '#2f63b8'; b.add('wall', xform(boxG(12, 13, 20, 2), F + 23, 6.5, -21), blue);
   for (let f = 1; f < 4; f++) for (let i = 0; i < 6; i++) windowAt(b, F + 17, f * 3.3 + 1.5, -12.6 - i * 3.3, 1.2, 1.4);
-  b.add('shutter', xform(planeAtlas(8, 3.0, randi(3, 15), 4, 4), F + 16.98, 1.5, -21, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3, 0] });
+  b.add('shutter', xform(planeAtlas(8, 3.0, randi(3, 15), 4, 4), F + 16.98, 1.5, -21, 0, -Math.PI / 2, 0), 0xffffff, { aShut: [3, 1] });
   for (let i = 0; i < 3; i++) billboard(b, F + 18, 13, -14 - i * 6.2, 5.6, 0);
   backRow(b, props, -27, -40, F + 13);
   // red kiosk on the corner
@@ -1387,9 +1419,9 @@ class Chunk {
     this.perches = []; const perch = (x, y, z) => this.perches.push({ x, y, z, busy: false, dead: false });
     const busy = phaseState.crowd > 0.35;
     // palms in loose rows on the grass/sand
-    const rows = [-10.8, -15.5, -21, -28, -36];
+    const rows = [-10.8, -15.5, -21, -28, -36], palms = [];
     for (let i = 0; i < PER.palm - 3; i++) {
-      const x = pick(rows) + rand(-1.6, 1.6), z = z0 - rand(0, 40); const feather = chance(0.25) && x > -18;
+      const x = pick(rows) + rand(-1.6, 1.6), z = z0 - rand(0, 40); const feather = chance(0.25) && x > -18; palms.push([x, z - z0]);
       const H = feather ? rand(9, 13) : rand(17, 27), th = feather ? rand(1.4, 1.7) : rand(0.85, 1.15);
       const yaw = rand(0, 6.28), lean = rand(-0.05, 0.05);
       const tm = M4(x, -0.05, z, yaw, th, H, th, lean, rand(-0.03, 0.03)); pPush(IM.trunk, tm, _C.setHSL(0.08, 0.12, rand(0.75, 1.0)));
@@ -1441,8 +1473,11 @@ class Chunk {
     const sid = this.index * 977; this.stations = [];
     for (const z of benchZ) for (const dz of [-0.45, 0.45]) if (chance(0.55)) this.stations.push({ t: 'sit', x: -6.75, y: 0.52, z: z + dz, ry: Math.PI / 2, seed: sid + 7 + this.stations.length, minCrowd: 0.05 });
     // performers, their audience and selfie-takers sit outside the four play lanes (|x| > 4.3)
-    if (this.index % 2 === 1) { const px = chance(0.5) ? -8.6 : 7.6, pz = z0 - rand(8, 32), act = pick(['dance', 'talk', 'spell']), ry = px < 0 ? Math.PI / 2 : -Math.PI / 2;
-      this.stations.push({ t: 'perform', act, x: px, y: 0, z: pz, ry, seed: sid + 201, minCrowd: 0.3 });
+    if (this.index % 2 === 1) { const px = chance(0.5) ? -8.6 : 7.6, pz = z0 - rand(8, 32), act = pick(['dance', 'talk', 'spell', 'bboy']), ry = px < 0 ? Math.PI / 2 : -Math.PI / 2;
+      if (act === 'bboy') {   // breakdancers on cardboard with a boombox: one on a power move, a partner toprocking beside the cardboard
+        this.stations.push({ t: 'bboy', move: pick(['headspin', 'windmill', 'footwork']), look: 'bboy', x: px, y: 0, z: pz, ry, seed: sid + 201, minCrowd: 0.3, always: true });
+        this.stations.push({ t: 'bboy', move: 'toprock', look: 'bboy2', x: px + Math.sin(ry) * 0.2 + Math.cos(ry) * 1.3, y: 0, z: pz + Math.cos(ry) * 0.2 - Math.sin(ry) * 1.3, ry, seed: sid + 202, minCrowd: 0.3, noStage: true, always: true });
+      } else this.stations.push({ t: 'perform', act, x: px, y: 0, z: pz, ry, seed: sid + 201, minCrowd: 0.3 });
       for (let k = 0; k < randi(2, 4); k++) { const ang = ry + rand(-0.8, 0.8), d = rand(1.9, 2.7), sx = px + Math.sin(ang) * d, sz = pz + Math.cos(ang) * d;
         this.stations.push({ t: 'watch', x: sx, y: 0, z: sz, ry: Math.atan2(px - sx, pz - sz), seed: sid + 211 + k, minCrowd: 0.5 }); } }
     if (chance(0.6)) this.stations.push({ t: 'selfie', x: chance(0.5) ? rand(-7.2, -5.0) : rand(5.0, 8.4), y: 0, z: z0 - rand(4, 36), ry: rand(-0.6, 0.6) + (chance(0.5) ? 0 : Math.PI), seed: sid + 301, minCrowd: 0.3 });
@@ -1460,9 +1495,26 @@ class Chunk {
     if (this.index % 3 === 1) { const right = chance(0.5), cx = right ? 6.9 : -10.6, cy = right ? 0 : -0.065, cz = z0 - rand(8, 32), n = randi(4, 6), a0 = rand(0, 6.28);
       for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2, x = cx + Math.sin(ang) * 1.15, z = cz + Math.cos(ang) * 1.15;
         this.stations.push({ t: 'drum', x, y: cy + SEAT_Y, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 421 + k, minCrowd: 0.05, always: true }); } }
+    // shoppers browsing in front of the shops (only while the shops are open; kept when the side crowd is thinned)
+    for (const p of this.tpl.props) if (p.t === 'front' && chance(0.7)) for (let k = 0, n = randi(1, 3); k < n; k++) {
+      const x = p.x - rand(0.35, 1.6), z = z0 + p.z + rand(-0.35, 0.35) * p.w;
+      this.stations.push({ t: 'browse', x, y: 0, z, ry: Math.PI / 2 + rand(-0.8, 0.8), seed: sid + 601 + this.stations.length, minCrowd: 0.3, always: true, open: true }); }
+    // now and then a police car parked on the grass or sand, clear of the palms and the vendor tents
+    if (this.police) this.police.visible = false;
+    if (chance(0.3)) for (let tries = 0; tries < 10; tries++) {
+      const x = rand(-18, -13.2), z = -rand(5, 35); if (palms.some(([px, pz]) => Math.hypot(px - x, (pz - z) * 0.6) < 3.0)) continue;
+      const kind = chance(0.6) ? 'policeCar' : 'policeSUV'; this.cars ||= {}; const car = this.cars[kind] ||= (() => { const g = makeVehicle(kind); this.group.add(g); return g; })();
+      for (const k in this.cars) this.cars[k].visible = false;
+      car.visible = true; car.position.set(x, -0.06, z); car.rotation.y = (chance(0.5) ? 0 : Math.PI) + rand(-0.5, 0.5); this.police = car; break; }
   }
 }
 const chunks = []; for (let i = 0; i < NCH; i++) chunks.push(new Chunk(i));
+// shops that put a stand-up sign out, with zFar < z <= zNear (world z), nearest first (game.js places the signs)
+function shopsBetween(zNear, zFar) {
+  const out = [];
+  for (const ch of chunks) { if (!ch.tpl) continue; const z0 = ch.group.position.z; for (const p of ch.tpl.props) if (p.t === 'shop') { const z = z0 + p.z; if (z <= zNear && z > zFar) out.push({ z, kind: p.kind }); } }
+  return out.sort((a, b) => b.z - a.z);
+}
 
 // =====================================================================================
 // SKY, LIGHTS, ENVIRONMENT
@@ -1519,22 +1571,24 @@ scene.add(sun); scene.add(sun.target);
 // LIGHTING PRESETS (lerped)
 // =====================================================================================
 const C = (h) => new THREE.Color(h);
+// the day runs overcast morning → sunny midday → golden hour → blue hour (and loops). crowd scales the people
+// on and off the lanes; open raises the shop shutters (and puts the shops' stand-up signs out)
 const PHASES = [
+  { name: 'Overcast morning', sunEl: 24, sunAz: 112, lightEl: 55, sunColor: C('#e9edf2'), sunI: 0.45, hemiSky: C('#e6ebf0'), hemiGround: C('#a29f98'), hemiI: 1.0, envI: 0.75,
+    zenith: C('#cfd6de'), horizon: C('#e4e7ea'), cloud: 0.0, cloudLit: C('#ffffff'), cloudShade: C('#d0d5da'), overcast: 1, fogColor: C('#dde1e5'), fogD: 0.0085, fogH: 0.016,
+    horizonFog: 1.0, skyI: 1.35, sunDisc: 0, sunGlow: 0.15, exposure: 1.0, bloom: 0.12, godrays: 0, night: 0, wet: 1, crowd: 0.12, open: 0, shadowR: 9, shadowI: 0.55, envGround: C('#9d9a92') },
   { name: 'Sunny midday', sunEl: 58, sunAz: 158, lightEl: 58, sunColor: C('#fff3e2'), sunI: 4.2, hemiSky: C('#9fc0ee'), hemiGround: C('#857c6a'), hemiI: 0.5, envI: 0.55,
     zenith: C('#1a4db8'), horizon: C('#86b0e4'), cloud: 0.26, cloudLit: C('#ffffff'), cloudShade: C('#c5d2e2'), overcast: 0, fogColor: C('#a9c3e3'), fogD: 0.0026, fogH: 0.035,
     horizonFog: 0.18, skyI: 1.05, sunDisc: 30, sunGlow: 1.0, exposure: 1.0, bloom: 0.2, godrays: 0.3, night: 0, wet: 0, crowd: 0.7, open: 1, shadowR: 2.0, shadowI: 1, envGround: C('#8a826e') },
   { name: 'Golden hour', sunEl: 6.5, sunAz: 232, lightEl: 8, sunColor: C('#ffad5c'), sunI: 3.0, hemiSky: C('#a7a9c2'), hemiGround: C('#6b5640'), hemiI: 0.55, envI: 0.6,
     zenith: C('#3d63a8'), horizon: C('#f4b47c'), cloud: 0.38, cloudLit: C('#ffcf9a'), cloudShade: C('#8a7b8c'), overcast: 0, fogColor: C('#e0b48f'), fogD: 0.0055, fogH: 0.04,
-    horizonFog: 0.45, skyI: 1.15, sunDisc: 22, sunGlow: 2.2, exposure: 1.05, bloom: 0.42, godrays: 0.9, night: 0.12, wet: 0, crowd: 0.65, open: 1, shadowR: 3, shadowI: 1, envGround: C('#7a6450') },
-  { name: 'Marine-layer fog', sunEl: 40, sunAz: 175, lightEl: 55, sunColor: C('#e9edf2'), sunI: 0.45, hemiSky: C('#e6ebf0'), hemiGround: C('#a29f98'), hemiI: 1.0, envI: 0.75,
-    zenith: C('#cfd6de'), horizon: C('#e4e7ea'), cloud: 0.0, cloudLit: C('#ffffff'), cloudShade: C('#d0d5da'), overcast: 1, fogColor: C('#dde1e5'), fogD: 0.0085, fogH: 0.016,
-    horizonFog: 1.0, skyI: 1.35, sunDisc: 0, sunGlow: 0.15, exposure: 1.0, bloom: 0.12, godrays: 0, night: 0, wet: 1, crowd: 0.07, open: 0, shadowR: 9, shadowI: 0.55, envGround: C('#9d9a92') },
+    horizonFog: 0.45, skyI: 1.15, sunDisc: 22, sunGlow: 2.2, exposure: 1.05, bloom: 0.42, godrays: 0.9, night: 0.12, wet: 0, crowd: 0.7, open: 1, shadowR: 3, shadowI: 1, envGround: C('#7a6450') },
   { name: 'Blue hour', sunEl: -5, sunAz: 245, lightEl: 30, sunColor: C('#7088c4'), sunI: 0.25, hemiSky: C('#4a66a8'), hemiGround: C('#2e3549'), hemiI: 0.85, envI: 0.7,
     zenith: C('#0c1d4c'), horizon: C('#6d7fb6'), cloud: 0.22, cloudLit: C('#6a74a0'), cloudShade: C('#2a3460'), overcast: 0, fogColor: C('#3f4f7c'), fogD: 0.0065, fogH: 0.035,
-    horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.45, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.35, open: 0.7, shadowR: 4, shadowI: 0.45, envGround: C('#22262f') },
+    horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.45, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.18, open: 0, shadowR: 4, shadowI: 0.45, envGround: C('#22262f') },
 ];
 const phaseState = {}; for (const k in PHASES[0]) phaseState[k] = PHASES[0][k] && PHASES[0][k].isColor ? PHASES[0][k].clone() : PHASES[0][k];
-const PHASE_LEN = 200, BLEND_START = 140;   // s per phase; the last 60 s blend into the next
+const PHASE_LEN = 260, BLEND_START = 140;   // s per phase: 140 s held, then a 120 s blend into the next
 let cycleT = 0, cyclePaused = false;
 function computePhase() {
   const n = PHASES.length; const t = ((cycleT % (PHASE_LEN * n)) + PHASE_LEN * n) % (PHASE_LEN * n);
@@ -1946,7 +2000,7 @@ loadMgr.onLoad = async () => {
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
   try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
-  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name }); }
+  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onStart: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onStart: every run starts on the overcast morning
   catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);

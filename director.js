@@ -23,10 +23,11 @@ export function createDirector(G, LANE_X) {
 
   const stageFor = (dist) => { let s = 0; for (let i = 0; i < D.stages.length; i++) if (dist >= D.stages[i].from) s = i; return s; };
 
-  // a blocker for one lane, from the stage's allowed types (people share = director.peopleShare)
+  // a blocker for one lane, from the stage's allowed types (people share = director.peopleShare × the phase's crowd level)
+  let busy = 1;
   function blocker(st) {
     const people = PEOPLE_BLOCKERS.filter((t) => st.types.includes(t)), objs = OBJECT_BLOCKERS.filter((t) => st.types.includes(t));
-    const usePeople = people.length && (!objs.length || Math.random() < D.peopleShare);
+    const usePeople = people.length && (!objs.length || Math.random() < D.peopleShare * busy);
     const list = usePeople ? people : objs; return list[Math.floor(Math.random() * list.length)];
   }
   const hasType = (st, t) => st.types.includes(t);
@@ -49,6 +50,12 @@ export function createDirector(G, LANE_X) {
       if (st.leashPlus && Math.random() < st.leashPlus) { const free = [...Array(N).keys()].filter((l) => l !== owner && l !== dog); out.push({ type: blocker(st), lane: free[Math.floor(Math.random() * free.length)], dz: rand(2, 4), opt: { still: true } }); }
       return out; },
     cross() { return [{ type: 'cross', lane: -1, dz: 0, opt: { xArr: rand(LANE_X[0], LANE_X[N - 1]) } }]; },
+    // a police SUV or lifeguard pickup coming up two neighbouring lanes (never lanes a faster rider is using); later on, a blocker
+    // in one of the other two lanes
+    vehicle(st, opts) { const pairs = [...Array(N - 1).keys()].filter((l) => !(opts.avoidLanes && (opts.avoidLanes.has(l) || opts.avoidLanes.has(l + 1)))); if (!pairs.length) return null;
+      const l = pairs[Math.floor(Math.random() * pairs.length)], out = [{ type: 'vehicle', lane: l, dz: 0, opt: { kind: Math.random() < 0.55 ? 'policeSUV' : 'lifeguard' } }];
+      if (st.leashPlus && Math.random() < 0.5) { const free = [...Array(N).keys()].filter((x) => x !== l && x !== l + 1); out.push({ type: blocker(st), lane: free[Math.floor(Math.random() * free.length)], dz: rand(-1, 1), opt: { still: true } }); }
+      return out; },
   };
 
   // ---------------- validator ----------------
@@ -57,7 +64,8 @@ export function createDirector(G, LANE_X) {
     const out = [], solid = (lane, depth = 1, dz = p.dz) => out.push({ lane, dz, kind: 'solid', depth });
     const jump = (lane, T, dz = p.dz) => out.push({ lane, dz, kind: 'jump', clear: T.clear, depth: T.d });
     switch (p.type) {
-      case 'can': case 'cones': case 'pizza': case 'poop': jump(p.lane, O[p.type]); break;
+      case 'can': case 'cones': case 'pizza': case 'poop': case 'sign': jump(p.lane, O[p.type]); break;
+      case 'vehicle': solid(p.lane, O.vehicle.d); solid(p.lane + 1, O.vehicle.d); break;
       case 'ped': solid(p.lane); if (p.opt && p.opt.drift !== undefined) solid(p.opt.drift); break;
       case 'skater': solid(p.lane); if (p.opt && p.opt.change !== undefined) solid(p.opt.change); break;
       case 'bike': case 'selfie': case 'smokers': solid(p.lane); break;
@@ -89,12 +97,14 @@ export function createDirector(G, LANE_X) {
   }
 
   // pick a pattern for this stage, fill in movers' behaviours, validate; on failure log it and fall back
-  function plan(dist, v) {
-    const si = stageFor(dist), st = D.stages[si];
+  // opts: busy (0..1 crowd level), avoidLanes (Set: lanes a vehicle mustn't take), extra (placements already decided, e.g. shop
+  // signs standing near the row: validated with the pattern but not returned)
+  function plan(dist, v, opts = {}) {
+    const si = stageFor(dist), st = D.stages[si], extra = opts.extra || []; busy = opts.busy ?? 1;
     for (let tries = 0; tries < 6; tries++) {
       let name = wpick(st.patterns);
-      if ((name === 'performerSide' && !hasType(st, 'performer')) || (name === 'leash' && !hasType(st, 'leash')) || (name === 'cross' && !hasType(st, 'cross'))) name = 'single';
-      const ps = PATTERNS[name](st);
+      if ((name === 'performerSide' && !hasType(st, 'performer')) || (name === 'leash' && !hasType(st, 'leash')) || (name === 'cross' && !hasType(st, 'cross')) || (name === 'vehicle' && !hasType(st, 'vehicle'))) name = 'single';
+      let ps = PATTERNS[name](st, opts); if (!ps) { name = 'single'; ps = PATTERNS.single(st, opts); }
       // movers decide now (so the validator sees both lanes of anyone drifting or changing lane)
       for (const p of ps) {
         p.opt = p.opt || {}; const still = p.opt.still;
@@ -104,7 +114,7 @@ export function createDirector(G, LANE_X) {
         if (p.type === 'selfie') p.opt.walkBack = Math.random() < st.selfieWalk;
         p.opt.moverScale = st.moverScale;
       }
-      const res = validate(ps, v);
+      const res = validate(ps.concat(extra), v);
       if (res.ok) { stats.patterns[name] = (stats.patterns[name] || 0) + 1; return { name, stage: si, placements: ps, length: Math.max(0, ...ps.map((p) => p.dz + (p.type === 'performer' ? O.performer.d / 2 : 0))) }; }
       stats.rejected++; const msg = `[director] rejected ${name} (stage ${si}, ${v.toFixed(1)} m/s): ${res.reasons.join('; ')}`;
       if (stats.violations.length < 50) stats.violations.push(msg); console.warn(msg);

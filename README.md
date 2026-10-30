@@ -30,8 +30,8 @@ Debug keys:
 
 | Key | Action |
 |---|---|
-| 1–4 | Jump to a lighting phase: sunny midday, golden hour, marine-layer fog, blue hour |
-| G | Hold or resume the lighting cycle (200 s per phase, the last 60 s blending into the next) |
+| 1–4 | Jump to a lighting phase: overcast morning, sunny midday, golden hour, blue hour |
+| G | Hold or resume the lighting cycle (260 s per phase: 140 s held, then a 120 s blend into the next) |
 | J | Clothing fit test: the game holds still and the camera orbits the player (walk, idle, skate stance, ollie, kickflip, bail); J again for a character in a hoodie, J again to exit |
 | L | Character lineup: 24 characters in two rows (the game holds still) |
 | K | Close-up at 2 m, stepping through the lineup characters one by one |
@@ -44,8 +44,9 @@ Debug keys:
 
 Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride without damage) to 230 km/h.
 
-- **Health** (top right): every obstacle you run into costs health: 34 for anything solid (3 hits end the run) and
-  10 for slipping on pizza or poop. Each obstacle can only hit you once, and there's no invincibility window, so
+- **Health** (top right): every obstacle you run into costs health: 35 for people of any kind and for vehicles
+  (3 hits end the run), 25 for trash cans and shop signs, 20 for cones, dogs and leads, 10 for slipping on pizza or
+  poop, and 20 for a wipeout. Each obstacle can only hit you once, and there's no invincibility window, so
   back-to-back hits each count. A hit gives a short camera jolt. After 8 s without damage, health slowly refills
   at 1.5 per second.
 - **Energy**: every jump costs 8–40 depending on how high you go (the trick comes with the height). It refills at
@@ -58,14 +59,27 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
 - **Smokers** stand in a lane alone or in a group of two or three, taking drags and blowing smoke.
 - **Dog walkers:** the owner in one lane and the dog in the next, with the red lead between them. A short-to-medium
   ollie clears the dog and the lead; the owner can't be jumped.
-- **Buskers:** a guitarist, drummer or keyboard player on a rug in an outer lane, with a few people watching. The
-  rug marks the whole footprint; it can't be jumped.
+- **Buskers:** a guitarist, drummer or keyboard player on a rug in an outer lane, or **breakdancers** on cardboard
+  with a boombox (one on a headspin, windmill or footwork, a partner toprocking), with a few people watching. The
+  rug or cardboard marks the whole footprint; it can't be jumped.
+- **Shop signs:** while the shops are open, stand-up signs go out in the right-hand lane in front of the shops they
+  belong to: PIZZA HERE at a pizza place, BEST COFFEE IN THE WORLD at a café, 2 FOR $30 SUNGLASSES at a sunglasses
+  shop, $5 TATTOOS at a tattoo parlour, and a green leaf at a (green) dispensary. They can be jumped.
+- **Vehicles:** from 600 m on, now and then a police SUV or a lifeguard pickup rolls slowly up the boardwalk toward
+  you across two lanes. Change lane. Walkers and riders in its lanes always head the same way it does, so nobody
+  walks into it.
 - You can't jump walkers, riders, influencers or smokers either, so change lane.
 - **Knocked-over trash cans** and **cone groups** can be jumped, but they need a fairly well-charged ollie.
 - **Pizza** and **dog poop** make you slip: you lose 10 health and some speed. Jump them, or hit jump within 0.1 s
   of touching one to get away clean.
-- People sitting at the sides (asking for change, smoking, drum circles) are scenery and never in your way.
+- People sitting at the sides (asking for change, smoking, drum circles), shoppers in front of the open shops and
+  police cars parked on the grass or sand are scenery and never in your way.
 - At top speed a full charge takes about 5 m of travel, so start holding jump early for cans and cones.
+
+**The day:** every run starts on an overcast morning, then turns to sunny midday, golden hour and blue hour (and
+round again). On the overcast morning and at blue hour the boardwalk is quiet (fewer walkers, cyclists and skaters,
+in the lanes and off them) and the shops are shuttered. At midday and golden hour it's at its busiest and every shop is
+open, with shoppers out front and signs in the right-hand lane.
 
 Score: 1 point per metre (the HUD shows the distance in feet). A jump is worth 25–100 depending on its height,
 plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossible 400. A jump that clears an
@@ -124,14 +138,16 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   so the face and hand detail survives. Hair, brows, eyes and clothing have their own materials. Hair is a
   luminance-tinted natural range (very dark through grey), and the irises are re-coloured (brown, hazel, green,
   blue, grey). Four builds come from the same mesh (everyday, slim, fuller, plus the original superhero body
-  at 8%), derived in bind pose so the vertex count and skin weights don't change.
+  at 8%), derived in bind pose so the vertex count and skin weights don't change. Exactly 3 of every 20 looks (15%)
+  are swimwear: women in a bikini (the base body's two-piece in a swim colour) or a one-piece (a swim tank over
+  matching bottoms), men in swim trunks.
 - **Clothing (outfits.js):** garments are real shells cut from the body surface by bind-pose region masks. They
   are smoothed, pushed out along normals (tops are thicker than bottoms so nothing z-fights), keep the body's
   skin weights, and get their hems snapped to a clean line. The body shader discards any skin under a garment
   using the same masks inset slightly, so nothing pokes through. Hoods, skirts, caps, sunglasses, backpacks and
   pouches are rigid parts weighted to bones. Each appearance's outfit is one merged, vertex-coloured
   `SkinnedMesh` bound to the body skeleton. Skirts are rigid, so seated kinds (sitters, drummers, cyclists,
-  skaters) never get one. The three performers have their own fixed outfits, and the player's look is a fixed
+  skaters, breakdancers) never get one. The performers have their own fixed outfits, and the player's look is a fixed
   recipe, which makes a title-screen character choice a matter of offering a few recipes.
 - **Necklines:** sleeved tops (tee, long sleeve, hoodie) cover the shoulders and open only inside a round crew
   collar around the neck (radius 8.5 cm, 9.5 cm for hoodies). A flat neckline cut below the top of these
@@ -149,7 +165,10 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - **Procedural animation** (bones edited after `mixer.update()`; the clip pose is saved and restored around each
   edit, because PropertyMixer only writes values that changed): the skater's lean, crouch, ollie pop, kickflip
   foot flick, arm balance and leg IK onto the deck; the selfie arm IK with a phone; the cyclist's pedal and
-  handlebar IK; loungers' arms lowered from the A-pose clip.
+  handlebar IK; loungers' arms lowered from the A-pose clip. Breakdancers: the free clips have no breaking, so the
+  whole rig is turned (headspin: upside down on the head, spinning; windmill: rolling across the upper back while
+  spinning, legs held up by IK so they sweep over the top) with limbs posed on top of a base clip; footwork is a
+  low crouch circling on one hand; the partner's toprock is `Dance_Loop`.
 - Debug: `__vb.chars` (pools, stats, `frozen = true` holds everyone still), `__vb.showSkater = true` keeps the
   skater visible in the `ref` camera.
 
@@ -161,6 +180,20 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   `durShare`, points), `energy` and `health`, `obstacles` (hitbox sizes and jump clearances), `spawn` (row
   spacing, mover speeds, the skater lane-change telegraph, flash distance, crossing traffic), `director` (stages,
   pattern weights, gap slack, behaviour shares), and `score` (including `nearMiss`, `nearDist`, `nearJump`).
+  Each obstacle's `dmg` is the health it costs.
+- **Shop signs:** shop stalls are tagged with a kind when the chunk templates are built (tattoo, pizza, coffee,
+  sunglasses, dispensary; the café and the INK & IRON corner shop too), and the header sign matches it.
+  `shopsBetween()` hands game.js the shops ahead; while `phase.open` is up, about 65% of them put a sign out in the
+  right-hand lane, never two within 30 m. Signs within 1.5 s of travel of a row are validated with it (as jumps in
+  that lane); the rest stand between rows, far enough from both to carve around.
+- **Vehicles (vehicles.js):** procedural police cars, police SUVs and lifeguard pickups: a side profile with wheel
+  arches extruded across the width, a tinted cabin, a canvas livery, door lettering and spinning wheels. Driving
+  ones are a two-lane obstacle (`vehicle` pattern, from stage 2) that moves toward the skater and meets the row line
+  when you do. The next row starts past where the car set out, a car never takes a lane a faster oncoming rider is
+  using, and walkers or riders spawned in its lanes while it's on the road always head the same way it does, so
+  nothing ever meets it head-on. Parked police cars are chunk scenery on the grass or sand.
+- **Crowd by phase:** the phase's `crowd` level scales the off-lane crowd and the share of people among the lane
+  blockers (`director.peopleShare` × crowd, down to 35% of it on the quiet phases).
 - **Timing:** everything runs on delta time. Delta is clamped to 50 ms, and the clock ignores time while the tab is
   hidden. The world (lighting cycle, crowd, skater) stands still while paused.
 - **Jump:** the arc is a real parabola under `jump.gravity`; how long you hold the key sets the apex between

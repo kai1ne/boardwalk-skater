@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createDirector } from './director.js';
+import { makeVehicle } from './vehicles.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -19,7 +20,7 @@ function wpick(obj) { let s = 0; for (const k in obj) s += obj[k]; let r = Math.
 const TRICK_NAME = { kickflip: 'KICKFLIP', heelflip: 'HEELFLIP', hardflip: 'HARDFLIP', threeSixty: '360 FLIP', impossible: 'IMPOSSIBLE' };
 
 export function createGame(ctx) {
-  const { scene, S, chars, IM, cfg: G, getPhaseName } = ctx;
+  const { scene, S, chars, IM, cfg: G, getPhaseName } = ctx;   // also ctx.phase (lighting phase state), ctx.shopsBetween, ctx.drawLeaf, ctx.onStart
   const L = G.lanes, J = G.jump, H = G.hazards, SP = G.spawn, SC = G.score, TR = G.tricks, EN = G.energy, HP = G.health;
   const LANE_X = Array.from({ length: L.count }, (_, i) => (i - (L.count - 1) / 2) * L.width);
   const $ = (id) => document.getElementById(id);
@@ -120,6 +121,29 @@ export function createGame(ctx) {
       const g = new THREE.Group(), T = G.obstacles.performer, r = new THREE.Mesh(new THREE.PlaneGeometry(T.w - 0.1, T.d - 0.1).rotateX(-Math.PI / 2), M.rug); r.position.y = 0.006; r.receiveShadow = true; g.add(r);
       const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.08, 14, 1, true).translate(0, 0.04, 0), M.hat); hat.position.set(0.55, 0.006, T.d / 2 - 0.5); g.add(hat); return g; },
   };
+  // shops' stand-up signs: A-frame boards, one painted face per shop kind
+  const SIGN_KINDS = ['pizza', 'coffee', 'sunglasses', 'tattoo', 'weed'];
+  const signTex = (() => { const c = document.createElement('canvas'); c.width = 256 * SIGN_KINDS.length; c.height = 384; const x = c.getContext('2d');
+    const board = (i, bg) => { x.fillStyle = '#2a2622'; x.fillRect(i * 256, 0, 256, 384); x.fillStyle = bg; x.fillRect(i * 256 + 12, 12, 232, 360); };
+    const lettering = (i, fg, lines, font) => { x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; const h = 330 / lines.length;
+      lines.forEach((t, k) => { let sz = Math.min(h * 0.8, 120); x.font = `bold ${sz}px ${font}`; while (x.measureText(t).width > 212 && sz > 12) { sz -= 2; x.font = `bold ${sz}px ${font}`; } x.fillText(t, i * 256 + 128, 27 + h * (k + 0.5)); }); };
+    board(0, '#c8102e'); lettering(0, '#fff4d6', ['PIZZA', 'HERE'], '"Arial Black", Impact, sans-serif');
+    board(1, '#1d2b22'); lettering(1, '#f4f1e6', ['BEST', 'COFFEE', 'IN THE', 'WORLD'], '"Chalkduster", "Marker Felt", sans-serif');
+    board(2, '#ffd93b'); lettering(2, '#111111', ['2 FOR', '$30', 'SUNGLASSES'], 'Impact, "Arial Black", sans-serif');
+    board(3, '#111111'); lettering(3, '#e8322b', ['$5', 'TATTOOS'], 'Rockwell, "Cooper Black", Georgia, serif');
+    board(4, '#f4f1e6'); if (ctx.drawLeaf) ctx.drawLeaf(x, 4 * 256 + 128, 192, 250, '#2e9a3e');
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; })();
+  const signFrameMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.8 }), signFaceMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.75 });
+  const SIGN_H = 0.95, SIGN_W = 0.62, SIGN_LEAN = 0.2, signBoardGeo = new THREE.BoxGeometry(SIGN_W + 0.06, SIGN_H, 0.025);
+  function buildSign(kind) {   // two boards hinged at the top, faces toward ±z (the oncoming skater sees one)
+    const g = new THREE.Group(), i = SIGN_KINDS.indexOf(kind), face = new THREE.PlaneGeometry(SIGN_W, SIGN_H), uv = face.attributes.uv;
+    for (let k = 0; k < uv.count; k++) uv.setX(k, (i + uv.getX(k)) / SIGN_KINDS.length);
+    for (const sd of [1, -1]) { const panel = new THREE.Group(), f = new THREE.Mesh(face, signFaceMat); f.position.z = 0.014;
+      panel.add(new THREE.Mesh(signBoardGeo, signFrameMat), f); panel.position.set(0, SIGN_H * Math.cos(SIGN_LEAN) / 2, sd * SIGN_H * Math.sin(SIGN_LEAN) / 2); panel.rotation.set(-sd * SIGN_LEAN, sd > 0 ? 0 : Math.PI, 0); g.add(panel); }
+    return g; }
+  for (const k of SIGN_KINDS) BUILD['sign:' + k] = () => buildSign(k);
+  for (const k of ['policeSUV', 'lifeguard']) BUILD['veh:' + k] = () => makeVehicle(k);
+  BUILD.stage = () => { const g = chars && chars.makeBreakStage ? chars.makeBreakStage() : new THREE.Group(); g.visible = true; return g; };   // breakdancers' cardboard + boombox
   const pools = {};
   function getMesh(type) { const p = pools[type] || (pools[type] = []); const g = p.pop() || BUILD[type](); g.traverse((m) => { if (m.isMesh) { m.castShadow = !m.material.transparent; m.receiveShadow = true; } }); scene.add(g); return g; }
   function freeMesh(type, g) { scene.remove(g); pools[type].push(g); }
@@ -133,7 +157,7 @@ export function createGame(ctx) {
   let nextRowZ = 0, agentSeed = 1;
   const director = createDirector(G, LANE_X);
   const timeTo = (z) => (S.z - z) / Math.max(sk.speed, 1);   // s until the skater reaches z at the current speed
-  const part = (T, dx = 0, dz = 0, w = T.w) => ({ dx, dz, w, d: T.d, h: T.h, clear: T.clear, kind: T.kind });
+  const part = (T, dx = 0, dz = 0, w = T.w) => ({ dx, dz, w, d: T.d, h: T.h, clear: T.clear, kind: T.kind, dmg: T.dmg ?? HP.hit });
   const placeholder = (o) => { o.mesh = getMesh('ped'); o.meshType = 'ped'; };
   function spawnObstacle(type, lane, z, opt = {}) {
     const T = G.obstacles[type], seed = 7919 * agentSeed++;
@@ -143,7 +167,7 @@ export function createGame(ctx) {
     const meet = (moveT) => { o.z = z - o.vz * moveT; };
     switch (type) {
       case 'ped': {
-        const dir = Math.random() < SP.towardChance ? 1 : -1;
+        let dir = Math.random() < SP.towardChance ? 1 : -1; if (dir < 0 && vehicleIn([lane, opt.drift ?? lane])) dir = 1;
         if (chars) o.ped = chars.addGameWalker({ x: o.x, z, dir, seed }); else placeholder(o);
         o.vz = dir * (o.ped ? o.ped.speed : 1.2); o.walkTs = o.ped ? o.ped.ts : 1;
         if (opt.behave === 'stop' && e > 3) { o.idle = rand(1.5, Math.min(3, e * 0.5)); o.tStop = rand(0.15, 0.4) * e; }
@@ -153,6 +177,7 @@ export function createGame(ctx) {
         let dir = Math.random() < SP.towardChance ? 1 : -1;
         const sp = rand(...(type === 'bike' ? SP.bikeSpeed : SP.skaterSpeed)) * sc;
         if (dir < 0 && sp > sk.speed * 0.7) dir = 1;   // never a same-way rider the player couldn't catch up with
+        if (dir < 0 && vehicleIn([lane, opt.change ?? lane])) dir = 1;   // nor one riding head-on into a car coming up the lane
         if (chars) { o.ped = (type === 'bike' ? chars.addGameCyclist : chars.addGameSkater)({ x: o.x, z, dirZ: dir, seed }); o.ped.speed = sp; } else placeholder(o);
         o.vz = dir * sp;
         if (type === 'skater' && opt.change !== undefined) { o.change = { to: opt.change, t0: e * rand(0.3, 0.5), dur: SP.skaterChangeTime }; o.lanes.push(opt.change); }
@@ -163,13 +188,21 @@ export function createGame(ctx) {
         if (opt.walkBack) { o.vz = -Math.cos(face) * SP.selfieWalkSpeed; if (o.ped) chars.setClip(o.ped, 'walk', -SP.selfieWalkSpeed / 0.95); }
         meet(e); break; }
       case 'leash': {   // owner in this lane, dog in the next, the lead stretched between them
-        const dir = Math.random() < SP.towardChance ? 1 : -1, side = (opt.dogLane - lane) * L.width, sg = Math.sign(side);
+        let dir = Math.random() < SP.towardChance ? 1 : -1; if (dir < 0 && vehicleIn([lane, opt.dogLane])) dir = 1; const side = (opt.dogLane - lane) * L.width, sg = Math.sign(side);
         if (chars) { o.ped = chars.addGameWalker({ x: o.x, z, dir, seed, dog: true }); o.ped.dogSide = side; o.ped.ts *= 0.9; o.ped.speed *= 0.9; } else placeholder(o);
         o.vz = dir * (o.ped ? o.ped.speed : 1.1); const dz = dir * 0.35, Od = G.obstacles.dog, Oc = G.obstacles.leashCord;
         o.parts = [part(G.obstacles.ped), part(Od, side, dz), part(Oc, sg * (0.3 + (Math.abs(side) - 0.3 - Od.w / 2) / 2), dz / 2, Math.abs(side) - 0.3 - Od.w / 2)];
         o.lanes.push(opt.dogLane); meet(e); break; }
-      case 'performer': {   // busker on a rug in an outer lane, facing the oncoming skater, with a few people watching
-        const act = ['guitar', 'drum', 'piano'][Math.floor(Math.random() * 3)], back = z - G.obstacles.performer.d / 2 + 0.6;
+      case 'performer': {   // busker on a rug, or breakdancers on cardboard, in an outer lane facing the oncoming skater, with a few people watching
+        const act = ['guitar', 'drum', 'piano', 'breakdance', 'breakdance'][Math.floor(Math.random() * 5)], back = z - G.obstacles.performer.d / 2 + 0.6;
+        if (act === 'breakdance') {   // one dancer on a power move in the middle of the cardboard, a partner toprocking behind, the crowd in front
+          o.mesh = getMesh('stage'); o.meshType = 'stage'; o.mesh.rotation.y = o.x > 0 ? 0 : Math.PI;   // the boombox sits on the boardwalk-edge side
+          if (chars) { const move = ['headspin', 'windmill', 'footwork'][Math.floor(Math.random() * 3)], c = z - 0.2;
+            o.peds = [chars.addGameStation({ kind: 'bboy', move, look: 'bboy', x: o.x, z: c, ry: 0, seed }), chars.addGameStation({ kind: 'bboy', move: 'toprock', look: 'bboy2', x: o.x + (o.x > 0 ? -0.55 : 0.55), z: c - 1.25, ry: 0, seed: seed + 9 })];
+            const n = 2 + Math.floor(Math.random() * 2);
+            for (let k = 0; k < n; k++) { const wx = o.x + (k - (n - 1) / 2) * 0.6 + rand(-0.1, 0.1), wz = c + rand(1.3, 1.9);
+              o.peds.push(chars.addGameStation({ kind: 'watch', x: wx, z: wz, ry: Math.atan2(o.x - wx, c - wz), seed: seed + k + 1 })); } }
+          break; }
         o.mesh = getMesh('rug'); o.meshType = 'rug'; o.mesh.rotation.y = 0;
         if (chars) { o.peds = [chars.addGameStation({ kind: act, x: o.x, z: back, ry: 0, seed })];
           const n = 2 + Math.floor(Math.random() * 2);
@@ -182,6 +215,10 @@ export function createGame(ctx) {
             o.peds.push(chars.addGameStation({ kind: 'smokeStand', x, z: pz, ry: n === 1 ? rand(-0.6, 0.6) + (Math.random() < 0.5 ? 0 : Math.PI) : Math.atan2(o.x - x, z - pz), seed: seed + k })); } }
         else placeholder(o);
         break; }
+      case 'sign': o.meshType = 'sign:' + (opt.sign || 'pizza'); o.mesh = getMesh(o.meshType); o.mesh.rotation.y = (Math.random() - 0.5) * 0.35; break;
+      case 'vehicle': {   // a police SUV or lifeguard pickup rolling slowly up the boardwalk toward the skater, straddling two lanes
+        o.x = (LANE_X[lane] + LANE_X[lane + 1]) / 2; o.lanes.push(lane + 1); o.vz = rand(1.8, 2.8); meet(e);
+        o.meshType = 'veh:' + (opt.kind || 'policeSUV'); o.mesh = getMesh(o.meshType); o.mesh.rotation.y = 0; break; }
       default: o.mesh = getMesh(type); o.mesh.rotation.y = (Math.random() - 0.5) * 0.5;
     }
     if (o.ped && type !== 'leash') o.ped.z = o.z; if (o.ped && type === 'leash') o.ped.z = o.z;
@@ -222,6 +259,7 @@ export function createGame(ctx) {
       if (o.t > c.t0) o.x = lerp(LANE_X[o.lane], LANE_X[c.to], smooth(0, 1, (o.t - c.t0) / c.dur));
     }
     if (o.ped) { o.ped.x = o.x; o.ped.z = o.z; } if (o.mesh && o.type === 'ped') o.mesh.position.set(o.x, 0, o.z);
+    if (o.type === 'vehicle' && o.mesh) { o.mesh.position.set(o.x, 0, o.z); const v = o.mesh.userData.veh; for (const w of v.wheels) w.rotation.x += o.vz * dt / v.r; }
     // an influencer's flash fires as you pass close
     const dz = S.z - o.z;
     if (o.type === 'selfie' && !o.flashed && o.ped && Math.abs(dz) < SP.flashDist && Math.abs(o.x - sk.x) < 2.6) { o.flashed = true; chars.cue(o.ped, 'flash'); }
@@ -238,14 +276,35 @@ export function createGame(ctx) {
     const v = Math.max(sk.speed, targetSpeed()), g = G.director.stages[stage()].gap;
     return Math.max(SP.minGap, v * (SP.reaction + (L.count - 1) * carveTime(v) + L.recoverTime)) * rand(g[0], g[1]);
   }
+  // Shops' stand-up signs go out in the right-hand lane while the shops are open (ctx.phase.open): not every shop puts one
+  // out, and never two within SIGN_GAP. Signs near a row are validated with it (they're jumpable, so they count as jumps
+  // in that lane); signs between rows stand on their own, far enough from either row to carve around.
+  const SIGN_LANE = L.count - 1, SIGN_GAP = 30; let signZ = 0, lastSignZ = 1e9;
+  function pickSigns(zFar) {
+    const out = []; if (zFar >= signZ) return out;
+    if (ctx.shopsBetween && ctx.phase && ctx.phase.open >= 0.5) for (const sh of ctx.shopsBetween(signZ, zFar)) {
+      if (lastSignZ - sh.z < SIGN_GAP || Math.random() > 0.65) continue; lastSignZ = sh.z; out.push(sh); }
+    signZ = zFar; return out;
+  }
+  // a vehicle never takes a lane that a faster rider (coming toward the skater) is already using: it would catch the car up from behind
+  const fastLanes = () => { const set = new Set(); for (const o of OBS) if (!o.done && (o.type === 'bike' || o.type === 'skater') && o.vz > 1.7) for (const l of o.lanes) set.add(l); return set; };
+  function vehicleIn(lanes) { return OBS.some((v) => v.type === 'vehicle' && !v.done && v.lanes.some((l) => lanes.includes(l))); }
+  const crowdShare = () => (ctx.phase ? clamp(ctx.phase.crowd / 0.7, 0.35, 1) : 1);   // fewer people in the lanes on the quiet morning and at blue hour
   function spawnRow(z) {
-    const plan = director.plan(stageDist(), Math.max(sk.speed, targetSpeed()));
+    const v = Math.max(sk.speed, targetSpeed()), m = Math.max(10, v * 1.5);   // m: the stretch before/after a row whose signs are checked with it
+    for (const sg of pickSigns(z + m)) spawnObstacle('sign', SIGN_LANE, sg.z, { sign: sg.kind });
+    const near = pickSigns(z - 10 - m);
+    const plan = director.plan(stageDist(), v, { busy: crowdShare(), avoidLanes: fastLanes(), extra: near.map((sg) => ({ type: 'sign', lane: SIGN_LANE, dz: z - sg.z, opt: {} })) });
+    let len = plan.length, carInSignLane = false;
     for (const p of plan.placements) {
       if (p.type === 'cross') spawnCrossing(z - p.dz, p.opt.xArr);
-      else spawnObstacle(p.type, p.lane, z - p.dz - (p.type === 'performer' ? G.obstacles.performer.d / 2 : 0), p.opt);
+      else { const o = spawnObstacle(p.type, p.lane, z - p.dz - (p.type === 'performer' ? G.obstacles.performer.d / 2 : 0), p.opt);
+        if (o.type === 'vehicle') { len = Math.max(len, z - o.z + G.obstacles.vehicle.d / 2); carInSignLane = o.lanes.includes(SIGN_LANE); } }   // the next row starts past the car
       st.spawned++; if (bot.on) bot.spawned++;
     }
-    return plan.length;
+    if (carInSignLane) signZ = Math.min(signZ, z - len);   // no signs in the path of a car driving up the sign lane
+    else for (const sg of near) spawnObstacle('sign', SIGN_LANE, sg.z, { sign: sg.kind });
+    return len;
   }
   function spawnAhead() { if (st.mode !== 'playing') return; while (nextRowZ > S.z - Math.max(SP.ahead, sk.speed * SP.aheadTime)) { const len = spawnRow(nextRowZ); nextRowZ -= rowGap() + len; } }
 
@@ -275,7 +334,8 @@ export function createGame(ctx) {
   function startGame() {
     clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0 });
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 });
-    sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay;
+    sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
+    if (ctx.onStart) { ctx.onStart(); if (ctx.phase && ctx.phaseNow) ctx.phaseNow(); }
     ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
   }
   function gameOver() {
@@ -332,9 +392,9 @@ export function createGame(ctx) {
     if (sk.mode === 'slip' || sk.mode === 'crash') return;
     sk.slipSpeed = sk.speed; sk.slipApplied = false; setMode('slip');
   }
-  function hit() {
-    if (st.mode !== 'playing') return false;   // every obstacle you run into costs health (each one can only hit once)
-    sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(HP.hit, 'OUCH'); return true;
+  function hit(dmg = HP.hit) {
+    if (st.mode !== 'playing') return false;   // every obstacle you run into costs its own damage (each one can only hit once)
+    sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
   }
   function land() {
     sk.y = 0; sk.vy = 0;
@@ -441,7 +501,7 @@ export function createGame(ctx) {
         const gap = Math.max(x0 - sx1, sx0 - x1);
         if (gap > 0) { o.minGap = Math.min(o.minGap, gap); continue; }   // passing beside it: track how close
         if (p.clear !== null && sk.y > p.clear) { if (!o.cleared) sk.clearedThisJump++; o.cleared = true; o.minV = Math.min(o.minV, sk.y - p.clear); continue; }
-        o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(); break;
+        o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(p.dmg); break;
       }
       if (!o.done && !ahead) {   // fully behind the skater
         o.done = true; if (st.mode !== 'playing') continue;

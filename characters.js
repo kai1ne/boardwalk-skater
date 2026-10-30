@@ -129,7 +129,11 @@ function skinAlbedo(i, outMin = 0.065, outMax = 0.56, chroma = 0.58) {
   const c = new THREE.Color(MST[i]), L = MST_LUM[i], t = Math.log(L / MST_LMIN) / Math.log(MST_LMAX / MST_LMIN), L2 = outMin * Math.pow(outMax / outMin, t);
   // per-tone saturation so every tone reaches a natural skin chroma (the light swatches are nearly grey)
   const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), sat = Math.min(4, Math.max(1, chroma / Math.max((mx - mn) / mx, 1e-3)));
-  for (const k of ['r', 'g', 'b']) c[k] = Math.max(0, L + (c[k] - L) * sat); return c.multiplyScalar(L2 / L);
+  for (const k of ['r', 'g', 'b']) c[k] = Math.max(0, L + (c[k] - L) * sat); c.multiplyScalar(L2 / L);
+  // the palest tones get a rosy undertone (blood under thin skin) so they read as alive, not chalky; fades out by MST-5
+  const rose = [0.8, 0.65, 0.45, 0.22][i] || 0;
+  if (rose) { const p = new THREE.Color('#e5917f'), Lp = 0.2126 * p.r + 0.7152 * p.g + 0.0722 * p.b, Lc = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; c.lerp(p.multiplyScalar(Lc / Lp), rose); }
+  return c;
 }
 const MST_WEIGHTS = [[0, 1], [1, 1], [2, 1], [3, 1.1], [4, 1.1], [5, 1.1], [6, 1.05], [7, 1], [8, 0.95], [9, 0.85]];
 // natural hair colours (any skin tone can have any of them; very dark tones lean toward the darker ones)
@@ -157,11 +161,12 @@ const HAIR_STYLES = { M: [['Hair_Buzzed', 0.35], ['Hair_SimpleParted', 0.35], ['
 // a seeded wardrobe recipe: top / bottom / shoes styles and colours, accessories (codes in outfits.js)
 function makeAppearance(sex, i) {
   R = mulberry32(9001 + i * 131 + (sex === 'F' ? 7 : 0));
-  const mst = wpick(MST_WEIGHTS), swim = chance(0.07);
+  R(); const mst = wpick(MST_WEIGHTS), swim = (i * 7 + (sex === 'F' ? 3 : 0)) % 20 < 3;   // exactly 3 looks in every 20 (15%) are swimwear (R() keeps the seeded sequence)
   const a = { sex, mst, tone: mst < 5 ? 0 : 5, swim, underCol: swim ? pick(SWIM) : '#2a2a2e', shoeCol: pick(SHOES), hairCol: hairColour(mst),
     eyeCol: EYES[wpick(mst >= 6 ? [['darkBrown', 0.6], ['brown', 0.3], ['hazel', 0.07], ['green', 0.03]] : [['darkBrown', 0.2], ['brown', 0.25], ['hazel', 0.18], ['green', 0.12], ['blue', 0.17], ['gray', 0.08]])] };
-  // swimwear kept modest: women in a swim tank over swim bottoms (tankini), men in board shorts
-  if (swim) { a.shoes = chance(0.6) ? 1 : 0; if (sex === 'M') { a.top = 0; a.bottom = 1; a.botCol = pick(SWIM); } else { a.top = 1; a.topCol = a.underCol; a.bottom = 0; } }
+  // swimwear: women in a bikini (the base body's two-piece in a swim colour) or a one-piece (a swim tank over matching bottoms),
+  // men in swim trunks; barefoot or in sandals
+  if (swim) { a.shoes = chance(0.6) ? 1 : 0; if (sex === 'M') { a.top = 0; a.bottom = 1; a.botCol = pick(SWIM); } else if (Math.floor(i / 7) % 3 !== 1) { a.top = 0; a.bottom = 0; } else { a.top = 1; a.topCol = a.underCol; a.bottom = 0; } }
   else {
     a.top = sex === 'M' ? wpick([[2, 0.42], [3, 0.16], [4, 0.14], [1, 0.16], [0, 0.04]]) : wpick([[2, 0.3], [1, 0.2], [3, 0.12], [4, 0.12], [5, 0.26]]);
     if (a.top === 0) { a.underCol = pick(SWIM); a.swim = true; a.bottom = 1; a.botCol = pick(SWIM); }   // shirtless: board shorts
@@ -184,6 +189,8 @@ const PERFORMER_LOOKS = {
   guitar: { top: 3, topCol: '#8a2f2a', bottom: 3, botCol: '#2c4466', denim: true, shoes: 2, shoeCol: '#7a6a58', cap: '#1b1b1b' },
   drum: { top: 1, topCol: '#f2cf4a', bottom: 1, botCol: '#3d5a40', shoes: 1, shoeCol: '#6b4a2b', sunglasses: true },
   piano: { top: 2, topCol: '#141414', bottom: 3, botCol: '#5a5a5a', shoes: 2, shoeCol: '#f2f2f2', sunglasses: true },
+  bboy: { top: 3, topCol: '#f2f2ef', trimCol: '#c8102e', bottom: 3, botCol: '#1b1b1b', shoes: 2, shoeCol: '#e8322b' },    // breakdancers: track tops and pants
+  bboy2: { top: 2, topCol: '#f2cf4a', bottom: 3, botCol: '#2c4466', shoes: 2, shoeCol: '#f4f4f2' },
 };
 
 // -------------------------------------------------------------------------------------
@@ -503,11 +510,19 @@ export async function createCharacters(ctx) {
   const keysGeo = mergeColored0([[new THREE.BoxGeometry(1.0, 0.06, 0.3).translate(0, 0.85, 0), 0x18181a], [new THREE.BoxGeometry(0.94, 0.012, 0.13).translate(0, 0.885, 0.07), 0xf2f0ea],
     ...[-0.4, 0.4].flatMap((x) => [[new THREE.BoxGeometry(0.03, 0.82, 0.03).translate(x, 0.41, -0.06).rotateX(0.18), 0x2a2a2a], [new THREE.BoxGeometry(0.03, 0.82, 0.03).translate(x, 0.41, 0.06).rotateX(-0.18), 0x2a2a2a]])]);
   const propVcol = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
+  // breakdancers' floor: two flattened cardboard boxes, and a boombox at the edge (handle, two speakers, tape deck)
+  const cardMat = new THREE.MeshStandardMaterial({ color: 0xb08a5c, roughness: 0.95 }), cardGeo = new THREE.BoxGeometry(1.0, 0.008, 1.5).translate(0, 0.004, 0);
+  const boomGeo = mergeColored0([[new THREE.BoxGeometry(0.52, 0.27, 0.15).translate(0, 0.135, 0), 0x2a2a2e],
+    ...[-0.16, 0.16].flatMap((x) => [[new THREE.CylinderGeometry(0.085, 0.085, 0.02, 16).rotateX(Math.PI / 2).translate(x, 0.13, 0.08), 0x9a9ea4], [new THREE.CylinderGeometry(0.065, 0.065, 0.025, 16).rotateX(Math.PI / 2).translate(x, 0.13, 0.085), 0x121214]]),
+    [new THREE.BoxGeometry(0.12, 0.07, 0.02).translate(0, 0.16, 0.08), 0xc9ccd0], [new THREE.TorusGeometry(0.17, 0.012, 6, 16, Math.PI).translate(0, 0.27, 0), 0x6a6e74]]);
+  function makeBreakStage() { const g = new THREE.Group(), a = new THREE.Mesh(cardGeo, cardMat), b = new THREE.Mesh(cardGeo, cardMat), bx = new THREE.Mesh(boomGeo, propVcol);
+    a.position.set(-0.42, 0, 0.05); a.rotation.y = 0.08; b.position.set(0.45, 0.003, -0.08); b.rotation.y = -0.12; bx.position.set(1.15, 0, -0.55); bx.rotation.y = -0.6;
+    for (const m of [a, b, bx]) { m.castShadow = m === bx; m.receiveShadow = true; g.add(m); } g.visible = false; return g; }
   class Prop { constructor() { this.towel = new THREE.Mesh(towelGeo, towelMats[0]); this.speaker = new THREE.Mesh(speakerGeo, speakerMat); this.hat = new THREE.Mesh(hatGeo, hatMat);
     this.drum = new THREE.Mesh(drumGeo, drumMats[0]); this.drum.scale.setScalar(0.8);   // a smaller djembe for playing seated on the ground
     this.cup = new THREE.Mesh(cupGeo, cupMat); this.sign = new THREE.Mesh(signGeo, signMats[0]); this.cig = new THREE.Mesh(cigGeo, cigMat);
-    this.guitar = new THREE.Mesh(guitarGeo, propVcol); this.keys = new THREE.Mesh(keysGeo, propVcol);
-    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig, this.guitar, this.keys);
+    this.guitar = new THREE.Mesh(guitarGeo, propVcol); this.keys = new THREE.Mesh(keysGeo, propVcol); this.stage = makeBreakStage();
+    this.g = new THREE.Group(); this.g.add(this.towel, this.speaker, this.hat, this.drum, this.cup, this.sign, this.cig, this.guitar, this.keys, this.stage);
     this.g.traverse((m) => { if (m.isMesh) { m.castShadow = m !== this.cig; m.receiveShadow = true; } }); this.agent = null; this.inScene = false; } }
   const PROPS = []; for (let i = 0; i < 48; i++) PROPS.push(new Prop());
 
@@ -518,7 +533,7 @@ export async function createCharacters(ctx) {
   const GAME_AGENTS = [];                  // pedestrians placed and moved by game.js (obstacles); rigged before anyone else
   R = mulberry32(31337);
   // people who sit or ride never get a dress: a skirt hangs straight and can't follow thighs bent forward
-  const NO_SKIRT = new Set(['sit', 'beg', 'smoke', 'drum', 'guitar', 'cycle', 'skate']);
+  const NO_SKIRT = new Set(['sit', 'beg', 'smoke', 'drum', 'guitar', 'cycle', 'skate', 'bboy']);
   function newAgent(kind, sex) { const s = sex || (chance(0.5) ? 'M' : 'F'); let app = pick(APPS[s]);
     if (NO_SKIRT.has(kind)) { const ok = APPS[s].filter((x) => !x.skirt); app = ok[Math.floor(R() * ok.length)]; }
     // the free bodies are 'Superhero' builds: narrow them in x/z for everyday proportions
@@ -553,6 +568,8 @@ export async function createCharacters(ctx) {
     else if (st.t === 'perform') a.clip = st.act === 'dance' ? CLIP.dance : st.act === 'spell' ? CLIP.spell : CLIP.talk;
     else if (st.t === 'watch' || st.t === 'selfie') a.clip = chance(0.3) && st.t === 'watch' ? CLIP.talk : CLIP.idle;
     else if (st.t === 'lie') a.clip = CLIP.lie;
+    else if (st.t === 'browse') a.clip = chance(0.4) ? CLIP.talk : CLIP.idle;
+    else if (st.t === 'bboy') { a.move = st.move; a.clip = bboyClip(st.move); a.app = PERF_APPS[a.sex][st.look] || a.app; }
     a.ts = st.t === 'lie' ? 0.35 : rand(0.85, 1.1);
     return (st.agent = a);
   }
@@ -565,10 +582,11 @@ export async function createCharacters(ctx) {
     GAME_AGENTS.push(a); return a;
   }
   // people standing or lying still in a lane: 'selfie' (phone held up, a.ry = facing) or 'lie' (on a towel)
-  function addGameStation({ kind, x, z, ry, seed, sex }) {
+  function addGameStation({ kind, x, z, ry, seed, sex, move, look }) {
     R = mulberry32(seed >>> 0); const a = newAgent(kind, sex); a.game = true; a.x = x; a.y = 0; a.z = z; a.ry = ry; a.scale = clamp(a.scale, 0.93, 1.0);
-    if (PERF_APPS[a.sex][kind]) a.app = PERF_APPS[a.sex][kind];   // buskers wear their act's outfit
-    a.st = { t: kind, seed: seed >>> 0 }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : kind === 'watch' && chance(0.35) ? CLIP.talk : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
+    if (PERF_APPS[a.sex][look || kind]) a.app = PERF_APPS[a.sex][look || kind];   // buskers and breakdancers wear their act's outfit
+    a.st = { t: kind, seed: seed >>> 0, noStage: true }; a.clip = kind === 'lie' ? CLIP.lie : SIT_KINDS.has(kind) ? CLIP.sit : kind === 'watch' && chance(0.35) ? CLIP.talk : CLIP.idle; a.ts = kind === 'lie' ? 0.35 : rand(0.85, 1.1);
+    if (kind === 'bboy') { a.move = move || 'toprock'; a.clip = bboyClip(a.move); a.ts = 1; }
     if (SIT_KINDS.has(kind)) a.y = FLOOR;   // sitting on the ground
     GAME_AGENTS.push(a); return a;
   }
@@ -640,7 +658,7 @@ export async function createCharacters(ctx) {
   function assignRig(a) {
     const pool = POOL[a.sex]; let r = null; for (const x of pool) if (!x.agent && !x.lineup) { r = x; break; } if (!r) return false;
     // IK-driven rigs keep a uniform scale so world-space bone maths stays exact
-    const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || a.kind === 'piano' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
+    const wb = a.kind === 'cycle' || a.kind === 'selfie' || a.kind === 'skate' || a.kind === 'piano' || a.kind === 'bboy' || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') ? 1 : a.w;
     r.agent = a; a.rig = r; r.setApp(a.app); r.acc = 0; r.wrap.scale.set(a.scale * wb, a.scale, a.scale * wb);
     placeRig(a); r.snap(currentClip(a), a.t0 + performance.now() * 0.001, a.ts); r.phone.visible = a.kind === 'selfie'; ensureInScene(r);
     if (a.dog) { let d = DOGS.find((x) => !x.agent && x.T === a.dog) || DOGS.find((x) => !x.agent);
@@ -650,7 +668,7 @@ export async function createCharacters(ctx) {
       if (!b && a.game) { b = BIKES.find((x) => x.agent && !x.agent.game); if (b) releaseRig(b.agent.rig); }   // game traffic takes a bike from an ambient cyclist
       if (b) { b.agent = a; a.bike = b; ensureInScene(b); } }
     if (a.kind === 'skate') { const bd = CRUISE_BOARDS.find((x) => !x.agent); if (bd) { bd.agent = a; a.board = bd; bd.deck.children[0].material.color.setHex(a.deckColor); ensureInScene(bd); } }
-    if (a.kind === 'lie' || a.kind === 'piano' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') || a.kind === 'smokeStand') { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
+    if (a.kind === 'lie' || a.kind === 'piano' || (a.kind === 'perform' && a.st.act !== 'spell') || (SIT_KINDS.has(a.kind) && a.kind !== 'sit') || a.kind === 'smokeStand' || (a.kind === 'bboy' && !a.st.noStage)) { const p = PROPS.find((x) => !x.agent); if (p) { p.agent = a; a.prop = p; ensureInScene(p); setupProp(a); } }
     return true;
   }
   function setupProp(a) { const p = a.prop, lie = a.kind === 'lie', perf = a.kind === 'perform', sit = SIT_KINDS.has(a.kind), h = a.st.seed >>> 3;
@@ -659,7 +677,7 @@ export async function createCharacters(ctx) {
     p.drum.visible = a.kind === 'drum'; p.drum.material = drumMats[h % drumMats.length]; p.drum.position.set(0, 0, 0.52);
     p.guitar.visible = a.kind === 'guitar'; p.keys.visible = a.kind === 'piano'; p.keys.position.set(0, 0, 0.42);
     p.cup.visible = a.kind === 'beg'; p.sign.visible = a.kind === 'beg'; p.sign.material = signMats[h % signMats.length]; p.sign.position.set(-0.42, 0, 0.3); p.sign.rotation.set(-0.25, 0.35, 0);
-    p.cig.visible = a.kind === 'smoke' || a.kind === 'smokeStand';
+    p.cig.visible = a.kind === 'smoke' || a.kind === 'smokeStand'; p.stage.visible = a.kind === 'bboy';
     p.g.position.set(a.x, sit ? a.y - FLOOR : a.y, a.z); p.g.rotation.set(0, a.ry, 0); p.g.updateMatrixWorld(true);
     p.speaker.position.set(0.9, 0, -0.3); p.hat.position.set(0.1, 0, 0.75); p.towel.position.set(0, 0, 0); }
   function consider(a) { const dx = a.x - camPos.x, dz = a.z - camPos.z; a.dist = Math.sqrt(dx * dx + dz * dz); a.seen = tick; a.key = a.game ? a.dist - 1e4 : a.dist;
@@ -688,7 +706,45 @@ export async function createCharacters(ctx) {
       _q.setFromAxisAngle(_UP, a.yaw); if (a.lean) _q.multiply(_lq.setFromAxisAngle(_Zax, a.lean));
       const bd = a.board; if (bd) { bd.board.position.set(a.x, 0, a.z); bd.board.quaternion.copy(_q); }
       w.quaternion.copy(_q).multiply(_sideQ); _p.set(-0.03, -0.3 * 0.24, 0).applyQuaternion(_q); w.position.set(a.x + _p.x, _p.y, a.z + _p.z); }
+    else if (a.kind === 'bboy') bboyPlace(a, w);
     else { w.position.set(a.x, a.y, a.z); w.rotation.set(0, a.ry, 0); }
+  }
+
+  // ---------------- breakdancers ----------------
+  // The free clip set has no breaking, so the power moves are posed here: the whole rig turns (headspin: upside down,
+  // spinning on the top of the head; windmill: rolling across the upper back while the body spins about it) and the
+  // limbs are set on top of a base clip. Footwork circles low on one hand; toprock is the dance clip.
+  function bboyClip(move) { return move === 'footwork' ? CLIP.crouchIdle : move === 'toprock' ? CLIP.dance : CLIP.idle; }
+  let curT = 0; const _bq1 = new QT(), _bq2 = new QT(), _bq3 = new QT(), _bv = new V3(), _Xa = new V3(1, 0, 0);
+  function bboyPlace(a, w) {
+    const k = curT + a.phase * 10, s = a.scale, Bd = BODY[a.sex];
+    if (a.move === 'headspin') { _bq1.setFromAxisAngle(_Ya, k * 4.2); _bq2.setFromAxisAngle(_Xa, Math.PI); w.quaternion.copy(_bq1).multiply(_bq2); w.position.set(a.x, a.y + Bd.height * s - 0.03, a.z); }
+    else if (a.move === 'windmill') {   // lie on the back (head toward -z), roll about the spine, spin about the vertical, pivoting on the upper back
+      const ph = k * 3.0; _bq1.setFromAxisAngle(_Ya, ph + a.ry); _bq2.setFromAxisAngle(_Zax, ph); _bq3.setFromAxisAngle(_Xa, -Math.PI / 2); w.quaternion.copy(_bq1).multiply(_bq2).multiply(_bq3);
+      _bv.set(0, Bd.lm[1].x * s, 0).applyQuaternion(w.quaternion); w.position.set(a.x - _bv.x, a.y + 0.16 - _bv.y, a.z - _bv.z); }
+    else if (a.move === 'footwork') { w.position.set(a.x, a.y - 0.12, a.z); w.rotation.set(0, a.ry + k * 1.2, 0); }
+    else { w.position.set(a.x, a.y, a.z); w.rotation.set(0, a.ry + Math.sin(k * 0.6) * 0.6, 0); }   // toprock, turning to the crowd
+  }
+  const _Ya = new V3(0, 1, 0);
+  function bboyPose(a, r) {
+    const B = r.bones, k = curT + a.phase * 10; r.wrap.updateMatrixWorld(true); r.wrap.getWorldQuaternion(_q);
+    _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);   // the body's own forward / right (they turn over with it)
+    if (a.move === 'headspin') {   // legs split in a wide V that opens and closes a little, arms out
+      const v = 0.75 + Math.sin(k * 1.3) * 0.12; rotWorld(B.thigh_l, _f, v); rotWorld(B.thigh_r, _f, -v); rotWorld(B.upperarm_l, _f, 1.15); rotWorld(B.upperarm_r, _f, -1.15);
+    } else if (a.move === 'windmill') {   // legs held up in a wide V while the body rolls under them (they swap sides over the top), arms tucked to the chest
+      B.pelvis.getWorldPosition(_hp); _h.set(_r.x, 0, _r.z); const side = _h.length(); _h.normalize();
+      for (const sd of [1, -1]) { const L = sd > 0; _t.copy(_hp).addScaledVector(_UP, 0.62 + 0.1 * (1 - side)).addScaledVector(_h, -sd * 0.7 * side);
+        _p.copy(_UP).addScaledVector(_h, -sd); ik2(L ? B.thigh_l : B.thigh_r, L ? B.calf_l : B.calf_r, L ? B.foot_l : B.foot_r, _t, _p); }
+      rotWorld(B.upperarm_l, _f, 0.35); rotWorld(B.upperarm_r, _f, -0.35); rotWorld(B.lowerarm_l, _r, 1.6); rotWorld(B.lowerarm_r, _r, 1.6);
+    } else if (a.move === 'footwork') {   // squatting low on the right hand, legs sweeping out and back in turn
+      rotWorld(B.spine_01, _r, -0.55); rotWorld(B.spine_01, _f, 0.35); B.spine_01.updateMatrixWorld(true);
+      B.pelvis.getWorldPosition(_hp); const fh = calib[r.sex].footH, p = k * 2.6;
+      for (const side of [1, -1]) { const L = side > 0, ph = p + (L ? 0 : Math.PI), out = 0.3 + 0.24 * Math.max(0, Math.sin(ph));
+        _t.copy(_hp).addScaledVector(_r, -side * out).addScaledVector(_f, 0.2 * Math.cos(ph)); _t.y = a.y + fh;
+        _p.copy(_f).addScaledVector(_UP, 0.5).addScaledVector(_r, -side * 0.6); ik2(L ? B.thigh_l : B.thigh_r, L ? B.calf_l : B.calf_r, L ? B.foot_l : B.foot_r, _t, _p); }
+      _t.copy(_hp).addScaledVector(_r, 0.36).addScaledVector(_f, -0.18); _t.y = a.y + 0.07; _p.copy(_r).addScaledVector(_UP, -0.3); ik2(B.upperarm_r, B.lowerarm_r, B.hand_r, _t, _p);
+      rotWorld(B.upperarm_l, _f, 0.9);
+    }
   }
 
   // ---------------- procedural overrides (run after mixer.update) ----------------
@@ -930,6 +986,7 @@ export async function createCharacters(ctx) {
   const FIX_DT = 1 / 60;
   function update(dt, t, phase) {
     tick++; if (api.frozen) dt = 0;   // debug: hold the crowd still for close-up screenshots
+    curT = t;
     camera.updateMatrixWorld(); camPos.setFromMatrixPosition(camera.matrixWorld);
     _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(_pm);
     const zRef = camPos.z, crowd = phase.crowd, nWalk = Math.round(crowd * WALKERS.length * api.walkerScale);
@@ -960,9 +1017,9 @@ export async function createCharacters(ctx) {
       for (const a of GAME_AGENTS) consider(a);
       const nCyc = Math.round(CYCLISTS.length * api.walkerScale);   // walkerScale thins everyone off the lanes: walkers, cyclists, station people
       CYCLISTS.forEach((a, i) => { if (crowd > 0.15 && i < nCyc) consider(a); else { a.vis = false; if (a.rig) releaseRig(a.rig); } });
-      for (const ch of chunks) if (ch.stations) for (const st of ch.stations) { if (crowd < st.minCrowd || (!st.always && ((Math.imul(st.seed, 2654435761) >>> 0) / 4294967296) >= api.walkerScale)) { if (st.agent && st.agent.rig) releaseRig(st.agent.rig); continue; } consider(stationAgent(st)); }
+      for (const ch of chunks) if (ch.stations) for (const st of ch.stations) { if (crowd < st.minCrowd || (st.open && phase.open < 0.5) || (!st.always && ((Math.imul(st.seed, 2654435761) >>> 0) / 4294967296) >= api.walkerScale)) { if (st.agent && st.agent.rig) releaseRig(st.agent.rig); continue; } consider(stationAgent(st)); }
       cands.sort((p, q) => p.key - q.key);   // game pedestrians first, then by distance
-      OBST.length = 0; for (const a of cands) if (a.kind === 'perform' || a.kind === 'watch' || a.kind === 'selfie' || a.kind === 'smokeStand') OBST.push(a);
+      OBST.length = 0; for (const a of cands) if (a.kind === 'perform' || a.kind === 'watch' || a.kind === 'selfie' || a.kind === 'smokeStand' || a.kind === 'browse' || a.kind === 'bboy') OBST.push(a);
       const keepM = Q.rigsPerSex, keepF = Q.rigsPerSex; let nM = 0, nF = 0;
       for (const a of cands) { if (a.sex === 'M' ? nM++ < keepM : nF++ < keepF) a.want = tick; }
       for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && (r.agent.want !== tick || r.agent.seen !== tick)) releaseRig(r);
@@ -982,6 +1039,7 @@ export async function createCharacters(ctx) {
         else if (a.kind === 'beg' || a.kind === 'smoke' || a.kind === 'drum' || a.kind === 'guitar') { r.saveOverride(); sitArms(a, r, t); }
         else if (a.kind === 'piano') { r.saveOverride(); pianoArms(a, r, t); }
         else if (a.kind === 'smokeStand') { r.saveOverride(); smokeArm(a, r, t); }
+        else if (a.kind === 'bboy' && a.move !== 'toprock') { r.saveOverride(); bboyPose(a, r); }
         else if (a.kind === 'selfie') { r.saveOverride(); selfie(r, t); } else if (a.kind === 'lie') { r.saveOverride(); lieArms(r); } else if (a.kind === 'cycle') { r.saveOverride(); cycle(a, r); } }
       if (near) stats.near++; else stats.mid++;
       // dog on a lead, trotting beside the owner at the owner's pace
@@ -1018,6 +1076,6 @@ export async function createCharacters(ctx) {
   const aoHidden = [];
   function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
-  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, fitView, fitClip, fitRig: () => FIT.rig, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
+  const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, fitView, fitClip, fitRig: () => FIT.rig, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, makeBreakStage, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
 }
