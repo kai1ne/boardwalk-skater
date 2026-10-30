@@ -68,6 +68,10 @@ licence requires.
   claims newer Quaternius releases moved to a custom licence; I couldn't confirm that, and the files shipped
   here carry CC0 licence files.
 
+## Title and Game Over logos
+
+`assets/ui/title-logo.png` and `assets/ui/gameover-logo.png` are AI-generated images supplied by Calvin Bak.
+
 ## Procedural (canvas-generated, original)
 
 Generated at runtime, with no external assets: corrugated roofing and roll-up shutter normal maps, stucco, stone
@@ -76,7 +80,7 @@ graffiti, murals (an original seagull character and an original portrait), billb
 merchandise walls, window interiors, art-table paintings, sandwich boards, marquee bulb lettering, the cafe awning
 lettering, pavement decals (slab seams, hairline cracks, oil and tire stains, gum spots, damp patches, blue-gray
 swirls, a painted X and painted road text), the US flag, and an invented state-style flag. All business names, tags
-and ads are invented.
+and ads are invented. The police cars, police SUVs and lifeguard pickups (`vehicles.js`), breakdancers' cardboard and boombox, stand-up shop signs and dispensary leaf are procedural too, and the breakdance moves are posed in code. On-screen text uses Trebuchet MS, a system font that isn't shipped with the game.
 
 ## Libraries
 

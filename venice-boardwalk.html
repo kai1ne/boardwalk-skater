@@ -34,6 +34,7 @@
   #gHealth { background: #4cd964; } #gEnergy { background: #45c8ff; } #gEnergyCost { background: rgba(10,40,70,.75); border-radius: 0 6px 6px 0; transition: none; }
   .meter .bar.flash { animation: mflash .45s ease-out; }
   @keyframes mflash { 0%, 60% { box-shadow: inset 0 0 0 2px #ff5050, 0 0 10px #ff5050; } 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); } }
+  #gPhase { font-size: 11px; letter-spacing: 1px; opacity: .75; margin-top: 2px; }
   #gDist { font-size: 18px; font-weight: bold; font-variant-numeric: tabular-nums; }
   #gPops { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: 0; display: flex; flex-direction: column; align-items: center; }
   .pop { white-space: nowrap; font-size: 22px; font-weight: bold; animation: pop 1.1s ease-out forwards; }
@@ -53,6 +54,18 @@
   .card h1 { margin: 0 0 4px; font-size: 38px; font-weight: bold; letter-spacing: 1px; }
   .card h1 .logo { display: block; width: min(574px, calc(100vw - 16px)); height: auto; margin: -6px 0 6px 50%; transform: translateX(-50%); }   /* letters 1.5x the old boxed size; overhangs the card */
   .card h1 .logo.over { width: min(520px, calc(100vw - 16px)); margin: -10px 0 4px 50%; }   /* the game-over graffiti */
+  .card .btn { pointer-events: auto; display: block; margin: 14px auto 0; padding: 7px 22px; border-radius: 6px; border: 2px solid #ffd84a; background: rgba(0,0,0,.35); color: #ffd84a; cursor: pointer;
+               font: bold 13px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+  .card .btn:hover { background: #ffd84a; color: #111; }
+  .screen:not(.show) * { pointer-events: none !important; }
+  #gCredits { visibility: hidden; } #gCredits.show { visibility: visible; }
+  #gCredits .card { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 40px); display: flex; flex-direction: column; background-color: rgba(12,16,22,.86);
+    background-image: radial-gradient(circle at 12% 8%, #e4e21a 0 5px, transparent 6px), radial-gradient(circle at 18% 15%, #e4e21a 0 2px, transparent 3px), radial-gradient(circle at 86% 6%, #e4e21a 0 7px, transparent 8px), radial-gradient(circle at 92% 14%, #e4e21a 0 3px, transparent 4px), radial-gradient(circle at 78% 12%, #e4e21a 0 2px, transparent 3px), radial-gradient(circle at 7% 16%, #e4e21a 0 3px, transparent 4px); }
+  .card h2.gfx { margin: 0 0 12px; font: italic bold 54px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; color: transparent; background: linear-gradient(#e2cffb, #7ea0f5); -webkit-background-clip: text; background-clip: text;
+    -webkit-text-stroke: 1.5px #0c0c10; filter: drop-shadow(3px 4px 0 #0c0c10) drop-shadow(0 0 5px rgba(228,226,26,.75)); }
+  .card .roll { overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 0 8px; }
+  .card .roll .u { text-transform: none; }
+  .card .roll h3 { margin: 12px 0 2px; font-size: 13px; letter-spacing: 1px; color: #ffd84a; } .card .roll p { margin: 0; opacity: .9; }
   .card .credit { margin-top: 16px; font-size: 12px; opacity: .6; }
   .card h2 { margin: 0 0 14px; font-size: 30px; font-weight: bold; }
   .card .sub { opacity: .8; font-size: 14px; margin-bottom: 18px; text-wrap: balance; }
@@ -95,17 +108,32 @@
 <div id="hud" class="off"></div>
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
-    <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
+    <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
 <div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
   <div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
-  <div class="go">Press Enter or Space to start</div><div class="credit">Made by Calvin Bak</div></div></div>
+  <div class="go">Press Enter or Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
 <div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.png" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Best <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gOverScores"></ol></div>
   <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Scores can't be saved in this browser, so they last this session only</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
+<div id="gCredits" class="screen"><div class="card">
+  <h2 class="gfx">Credits</h2>
+  <div class="roll" id="gCreditsRoll">
+    <h3>Game</h3><p>Made by Calvin Bak</p>
+    <h3>Title and Game Over logos</h3><p>AI-generated images</p>
+    <h3>Skin tones</h3><p>Monk Skin Tone Scale by Dr. Ellis Monk, released by Google<br>CC BY 4.0 · <span class="u">skintone.google</span></p>
+    <h3>Characters and hair</h3><p>Universal Base Characters [Standard] by Quaternius<br>CC0 · <span class="u">quaternius.itch.io/universal-base-characters</span></p>
+    <h3>Animation</h3><p>Universal Animation Library [Standard] by Quaternius, with animator Gonzalo Furnier<br>CC0 · <span class="u">quaternius.itch.io/universal-animation-library</span></p>
+    <h3>Dogs</h3><p>Shiba Inu by Quaternius · CC0 · <span class="u">poly.pizza/m/y4wdQpg767</span><br>Husky by Quaternius · CC0 · <span class="u">poly.pizza/m/wcWiuEqwzq</span></p>
+    <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
+    <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
+    <h3>Made in code for this game</h3><p>Buildings, signs, murals, clothing, skateboards, bikes, cars, props, birds, sky and all other procedural art. All business names, tags and ads are invented.</p>
+  </div>
+  <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
+</div></div>
 <div id="gCount"></div>
 <div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
@@ -168,6 +196,7 @@ const GAME = {
   pause: { countdown: 3 },                 // s of 3-2-1 after resuming, with input ignored
   hints: { holdAfter: 60, airAfter: 3 },   // s of play with no jump before "Try holding Space"; jumps with no trick attempt before "Try ↑ or ↓ in the air"
   save: { key: 'boardwalkSkater.save.v1', oldScores: 'vbSkaterScores', oldBest: 'vbSkaterBest', topN: 5, nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
+  weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
   health: { max: 100, hit: 35,             // fallback damage for an obstacle without its own `dmg` (each obstacle below sets one)
@@ -1588,10 +1617,10 @@ scene.add(sun); scene.add(sun.target);
 // LIGHTING PRESETS (lerped)
 // =====================================================================================
 const C = (h) => new THREE.Color(h);
-// the day runs overcast morning → sunny midday → golden hour → blue hour (and loops). crowd scales the people
+// the cycle runs overcast fog → sunny midday → golden hour → blue hour (and loops). crowd scales the people
 // on and off the lanes; open raises the shop shutters (and puts the shops' stand-up signs out)
 const PHASES = [
-  { name: 'Overcast morning', sunEl: 24, sunAz: 112, lightEl: 55, sunColor: C('#e9edf2'), sunI: 0.45, hemiSky: C('#e6ebf0'), hemiGround: C('#a29f98'), hemiI: 1.0, envI: 0.75,
+  { name: 'Overcast fog', sunEl: 24, sunAz: 175, lightEl: 55, sunColor: C('#e9edf2'), sunI: 0.45, hemiSky: C('#e6ebf0'), hemiGround: C('#a29f98'), hemiI: 1.0, envI: 0.75,
     zenith: C('#cfd6de'), horizon: C('#e4e7ea'), cloud: 0.0, cloudLit: C('#ffffff'), cloudShade: C('#d0d5da'), overcast: 1, fogColor: C('#dde1e5'), fogD: 0.0085, fogH: 0.016,
     horizonFog: 1.0, skyI: 1.35, sunDisc: 0, sunGlow: 0.15, exposure: 1.0, bloom: 0.12, godrays: 0, night: 0, wet: 1, crowd: 0.12, open: 0, shadowR: 9, shadowI: 0.55, envGround: C('#9d9a92') },
   { name: 'Sunny midday', sunEl: 58, sunAz: 158, lightEl: 58, sunColor: C('#fff3e2'), sunI: 4.2, hemiSky: C('#9fc0ee'), hemiGround: C('#857c6a'), hemiI: 0.5, envI: 0.55,
@@ -1605,7 +1634,7 @@ const PHASES = [
     horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.45, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.18, open: 0, shadowR: 4, shadowI: 0.45, envGround: C('#22262f') },
 ];
 const phaseState = {}; for (const k in PHASES[0]) phaseState[k] = PHASES[0][k] && PHASES[0][k].isColor ? PHASES[0][k].clone() : PHASES[0][k];
-const PHASE_LEN = 130, BLEND_START = 70;   // s per phase: 70 s held, then a 60 s blend into the next
+const PHASE_LEN = GAME.weather.phaseLen, BLEND_START = PHASE_LEN - GAME.weather.blend;   // the loop closes: blue hour blends back into the fog
 let cycleT = 0, cyclePaused = false;
 function computePhase() {
   const n = PHASES.length; const t = ((cycleT % (PHASE_LEN * n)) + PHASE_LEN * n) % (PHASE_LEN * n);
@@ -1868,11 +1897,12 @@ function updatePost(t) {
 // INPUT, HUD, RESIZE
 // =====================================================================================
 const hud = document.getElementById('hud');
+const DEBUG_PHASES = ['3', '1', '2', '4'];   // the key for each phase in loop order: 1 sunny, 2 golden hour, 3 overcast fog, 4 blue hour
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;   // typing a high-score name
   if (game && game.keydown(e)) { e.preventDefault(); return; }
   if (e.key === '`') { hud.classList.toggle('off'); return; }   // backtick shows the debug strip
-  if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
+  if (e.key >= '1' && e.key <= '4') { cycleT = DEBUG_PHASES.indexOf(e.key) * PHASE_LEN; }   // debug: jump to a named phase, whatever the loop order
   else if (e.key === 'g' || e.key === 'G') cyclePaused = !cyclePaused;   // P is the autopilot, L/K the character lineup, J the fit test
   else if ((e.key === 'j' || e.key === 'J') && chars) setFit((FITV.mode + 1) % 3);
   else if ((e.key === 'l' || e.key === 'L') && chars) setLineup(!LINE.on);
@@ -1952,7 +1982,7 @@ function updateHud(dt) {
     hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · G hold phase · J fit test · P autopilot · L lineup · K close-up · H hitboxes · O AO · C camera</span>`; }
 }
 
-// Debug / screenshot hooks (used for the reference comparisons)
+// Debug / screenshot hooks
 window.__vb = {
   showSkater: false,   // keep the skater visible in the fixed 'ref' camera (close-up checks)
   timeScale: 1,        // slow motion for animation checks
@@ -1967,13 +1997,6 @@ window.__vb = {
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
   get chars() { return chars; },
   get fps() { return fps; },
-  // camera poses matched to the reference photos (eye height 1.7 m, Street-View-like FOV)
-  POSES: {
-    ref1: { phase: 2, x: 0.3, z: -71, yaw: 2, pitch: 3 }, ref2: { phase: 0, x: -6.0, z: -38, yaw: 6, pitch: 3 },
-    ref3: { phase: 2, x: 1.5, z: -316, yaw: 6, pitch: 15 }, ref4: { phase: 0, x: -1.5, z: -160, yaw: 4, pitch: 0 },
-    ref5: { phase: 2, x: 0.5, z: -36, yaw: 3, pitch: 0 }, ref6: { phase: 2, x: 0.5, z: -205, yaw: 6, pitch: 1 },
-  },
-  shot(name, phaseOverride) { const p = this.POSES[name]; this.stop(); this.setPhase(phaseOverride ?? p.phase); computePhase(); this.ref({ x: p.x, y: 1.7, z: p.z, yaw: p.yaw, pitch: p.pitch, fov: 62 }); this.tick(2); this.relayout(); this.tick(20); return name; },
   relayout() { for (const c of chunks) c.place(c.index); },
   tick(n = 1, dt = 1 / 60) { for (let i = 0; i < n; i++) { envTimer = 0; step(dt, performance.now() / 1000); } },
   // rAF-independent benchmark: N full frames back to back, GPU-synced by a 1px readback. Returns ms/frame.
@@ -2017,7 +2040,7 @@ loadMgr.onLoad = async () => {
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
   try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
-  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onStart: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onStart: every run starts on the overcast morning
+  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onStart: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onStart: every run starts in the overcast fog
   catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);

@@ -26,7 +26,7 @@ export function createGame(ctx) {
   const $ = (id) => document.getElementById(id);
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), count: $('gCount'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), count: $('gCount'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
   // saved game: top scores, tricks discovered and hints shown, in localStorage under a versioned key. Bad or missing data
   // starts fresh; if storage is blocked everything lives in memory for the session and the game-over screen says so.
@@ -712,7 +712,7 @@ export function createGame(ctx) {
       // while charging, the darker end of the bar shows what this jump will cost
       const cost = sk.mode === 'charge' && st.mode === 'playing' ? Math.min(st.energy, ollieCost(chargeFrac())) : 0;
       ui.energyCost.style.width = `${cost / EN.max * 100}%`; ui.energyCost.style.left = `${(st.energy - cost) / EN.max * 100}%`;
-      ui.dist.textContent = `${Math.floor(st.dist * 3.28084).toLocaleString()} ft`; }
+      ui.dist.textContent = `${Math.floor(st.dist * 3.28084).toLocaleString()} ft`; ui.phase.textContent = getPhaseName(); }
   }
 
   // -------------------------------------------------------------------------------------
@@ -720,10 +720,16 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   // every key goes through a named action (GAME.input); press / release are what touch controls can call later
   const ACTIONS = {}; for (const a in G.input) for (const k of G.input[a]) (ACTIONS[k] ||= []).push(a);
+  let creditsOpen = false;
+  function showCredits(on) { creditsOpen = on; ui.credits.classList.toggle('show', on); ui.title.classList.toggle('show', !on && st.mode === 'title'); if (on) ui.roll.scrollTop = 0; }
+  $('gCreditsBtn').addEventListener('click', () => { if (st.mode === 'title') showCredits(true); });
+  $('gCreditsClose').addEventListener('click', () => showCredits(false));
+  for (const b of ['gCreditsBtn', 'gCreditsClose']) $(b).addEventListener('mousedown', (e) => e.preventDefault());   // a click never leaves keyboard focus on the button
   function press(a) {   // returns true if the action did something on this screen
+    if (creditsOpen) { if (a === 'pause') showCredits(false); else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
     if (st.countT > 0) return false;   // ignored during the 3-2-1
     if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); return true; } return false; }
-    if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } return false; }
+    if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } if (a === 'credits') { showCredits(true); return true; } return false; }
     if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { startGame(); return true; } return false; }
     switch (a) {
       case 'pause': setPaused(true); return true;

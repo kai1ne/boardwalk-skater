@@ -1,8 +1,7 @@
 # Boardwalk Skater
 
-A desktop, keyboard-only Three.js endless skater on a Venice-style beach boardwalk. Phase 1 matched the look of the
-photos in `reference/`, phase 1b added the rigged crowd, and phase 2 (this version) makes it playable from the title
-screen to game over.
+A desktop, keyboard-only Three.js endless skater on a Venice-style beach boardwalk. It runs from the title screen through to
+game over, with tricks, a weather cycle, saved high scores and a credits screen.
 
 ## Run
 
@@ -102,7 +101,6 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   falls back to the old block figures).
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
 - `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
-- `reference/` — the reference photos.
 
 ## How it's built
 
@@ -260,6 +258,5 @@ device detection, and add touch input next to the existing `keydown` handler.
   `setAutopilot(on)`, `botReport()`, `director`). `game.st.stageLock = n` pins a difficulty stage for testing.
 - `noRender` — skip rendering, so `tick(n, dt)` simulates quickly (used for the headless autopilot tests).
 - `timeScale` — slow motion (for example `0.05`) for checking animation.
-- `shot('ref1')` … `shot('ref6')` — set the camera and phase to match each reference photo.
 - `bench(30)` — milliseconds per frame without rAF timing (it forces a GPU sync).
 - `info()` — draw calls, triangles and any texture fallbacks used.
