@@ -25,9 +25,38 @@ export function createGame(ctx) {
   const $ = (id) => document.getElementById(id);
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), titleBest: $('gTitleBest'), newBest: $('gNewBest') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
-  let best = 0; try { best = Number(localStorage.getItem('vbSkaterBest')) || 0; } catch (e) { /* storage blocked: best score lasts this session only */ }
+  // top-5 high scores, kept in this browser's localStorage (a run's name is asked for when it makes the list)
+  const HS_MAX = 5, HS_KEY = 'vbSkaterScores', cleanName = (v) => String(v).replace(/[^A-Za-z0-9]/g, '').slice(0, 10);
+  let scores = [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(HS_KEY) || '[]');
+    if (Array.isArray(raw)) scores = raw.map((r) => ({ name: cleanName(r && r.name) || 'PLAYER', score: Math.floor(Number(r && r.score)) || 0 })).filter((r) => r.score > 0);
+    const old = Number(localStorage.getItem('vbSkaterBest')) || 0;   // carry over the best score from before the list existed
+    if (old && !scores.length) scores.push({ name: 'PLAYER', score: old });
+  } catch (e) { /* storage blocked: scores last this session only */ }
+  scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX);
+  let best = scores.length ? scores[0].score : 0, entering = false, lastEntry = null;
+  const qualifies = (n) => n > 0 && (scores.length < HS_MAX || n > scores[scores.length - 1].score);
+  function saveScores() { try { localStorage.setItem(HS_KEY, JSON.stringify(scores)); } catch (e) { /* storage blocked */ } }
+  function renderScores() {
+    for (const ol of ui.scores) { ol.textContent = ''; for (let i = 0; i < HS_MAX; i++) {
+      const r = scores[i], li = document.createElement('li');
+      if (!r) li.className = 'empty'; else if (r === lastEntry) li.className = 'me';
+      for (const [c, t] of [['r', i + 1], ['n', r ? r.name : '—'], ['s', r ? r.score.toLocaleString() : '']]) { const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp); }
+      ol.appendChild(li);
+    } }
+  }
+  ui.name.addEventListener('input', () => { const v = cleanName(ui.name.value); if (v !== ui.name.value) ui.name.value = v; });
+  ui.name.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && !e.repeat) {
+      lastEntry = { name: cleanName(ui.name.value) || 'PLAYER', score: st.score };
+      scores.push(lastEntry); scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX); saveScores();
+      entering = false; ui.name.blur(); showScreens(); renderScores();
+    }
+  });
   const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
@@ -251,13 +280,16 @@ export function createGame(ctx) {
   }
   function gameOver() {
     st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null;
-    st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; try { localStorage.setItem('vbSkaterBest', String(best)); } catch (e) { /* storage blocked */ } }
+    st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
+    entering = !bot.on && qualifies(st.score); ui.name.value = '';   // autopilot runs don't go on the list
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
   }
   function showScreens() {
     ui.title.classList.toggle('show', st.mode === 'title'); ui.over.classList.toggle('show', st.mode === 'over' && st.overT > G.overDelay);
     ui.pause.classList.toggle('show', st.paused); ui.hud.classList.toggle('show', st.mode !== 'title');
-    ui.titleBest.textContent = best ? `Best ${best.toLocaleString()}` : '';
+    const asking = entering && st.mode === 'over' && st.overT > G.overDelay;
+    ui.entry.style.display = asking ? 'block' : 'none'; ui.overGo.style.display = entering ? 'none' : '';
+    if (asking && document.activeElement !== ui.name) ui.name.focus();
   }
   function setPaused(p) { if (st.mode !== 'playing') p = false; st.paused = p; showScreens(); }
 
@@ -577,7 +609,7 @@ export function createGame(ctx) {
     if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
     if (st.paused) { if (k === 'Enter' || k === ' ' || k === 'Escape') { if (!e.repeat) setPaused(false); return true; } return LEFT.includes(k) || RIGHT.includes(k) || k === 'ArrowUp'; }
     if (st.mode === 'title') { if ((k === 'Enter' || k === ' ') && !e.repeat) { startGame(); return true; } return k === ' ' || k.startsWith('Arrow'); }
-    if (st.mode === 'over') { if ((k === 'Enter' || k === ' ') && !e.repeat && st.overT > G.overDelay) startGame(); return k === ' ' || k.startsWith('Arrow') || k === 'Enter'; }
+    if (st.mode === 'over') { if ((k === 'Enter' || k === ' ') && !e.repeat && st.overT > G.overDelay && !entering) startGame(); return k === ' ' || k.startsWith('Arrow') || k === 'Enter'; }
     if (k === 'Escape') { setPaused(true); return true; }
     if (LEFT.includes(k)) { if (!e.repeat) { sk.held[-1] = true; pressLane(-1); } return true; }
     if (RIGHT.includes(k)) { if (!e.repeat) { sk.held[1] = true; pressLane(1); } return true; }
@@ -590,7 +622,7 @@ export function createGame(ctx) {
   window.addEventListener('blur', () => { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; setPaused(true); } });
 
-  showScreens();
+  renderScores(); showScreens();
   return {
     update, keydown, keyup,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },

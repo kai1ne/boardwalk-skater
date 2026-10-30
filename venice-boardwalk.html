@@ -57,6 +57,17 @@
   .card .big { font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums; margin: 4px 0; }
   .card .best { opacity: .8; font-size: 15px; margin-bottom: 16px; }
   .card .nb { color: #ffd84a; font-weight: 800; margin-bottom: 6px; }
+  .card .keys { margin-bottom: 18px; } .card .keys kbd { font-size: 14px; line-height: 24px; padding: 2px 10px; margin: 0 2px; }
+  .card .hs { margin: 0 auto 18px; width: 240px; }
+  .card .hsT { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd84a; margin-bottom: 6px; }
+  .card .hs ol { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  .card .hs li { display: flex; gap: 10px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  .card .hs li .r { width: 18px; text-align: right; opacity: .6; } .card .hs li .n { flex: 1; text-align: left; font-weight: 600; }
+  .card .hs li .s { font-variant-numeric: tabular-nums; } .card .hs li.empty { opacity: .35; } .card .hs li.me { color: #ffd84a; }
+  .card .entry { display: none; margin-bottom: 16px; pointer-events: auto; }
+  .card .entry input { width: 200px; padding: 8px 10px; border-radius: 6px; border: 2px solid #ffd84a; background: rgba(0,0,0,.35); color: #fff;
+                       font: 700 20px -apple-system, Helvetica, Arial, sans-serif; letter-spacing: 2px; text-align: center; outline: none; }
+  .card .entry .hint { font-size: 12px; opacity: .6; margin-top: 6px; }
   @keyframes blink { 50% { opacity: .45; } }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #cfd5db;
              font: 15px -apple-system, Helvetica, Arial, sans-serif; color: #333; transition: opacity .6s; }
@@ -77,16 +88,14 @@
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div></div>
 <div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
-  <table>
-    <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd></td><td>Change lane</td></tr>
-    <tr><td><kbd>↑</kbd> / <kbd>Space</kbd></td><td>Tap to ollie; hold longer to jump higher and throw a trick</td></tr>
-    <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> in the air</td><td>Switch feet (front ↔ back)</td></tr>
-    <tr><td><kbd>Esc</kbd></td><td>Pause</td></tr>
-  </table>
-  <div class="sub">Higher jumps cost more energy. Jump cans and cones for extra points; pizza and poop make you slip; people don't move for you.</div>
-  <div class="go">Press Enter or Space to start</div><div class="best" id="gTitleBest" style="margin:10px 0 0"></div><div class="credit">Made by Calvin Bak</div></div></div>
+  <div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div>
+  <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
+  <div class="go">Press Enter or Space to start</div><div class="credit">Made by Calvin Bak</div></div></div>
 <div id="gOver" class="screen"><div class="card"><h2>GAME OVER</h2><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
-  <div class="best">Best <span id="gOverBest">0</span></div><div class="go">Press Enter or Space to skate again</div></div></div>
+  <div class="best">Best <span id="gOverBest">0</span></div>
+  <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
+  <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gOverScores"></ol></div>
+  <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
 <div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
@@ -1789,6 +1798,7 @@ function updatePost(t) {
 // =====================================================================================
 const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;   // typing a high-score name
   if (game && game.keydown(e)) { e.preventDefault(); return; }
   if (e.key === '`') { hud.classList.toggle('off'); return; }   // backtick shows the debug strip
   if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase

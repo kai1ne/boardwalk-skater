@@ -72,7 +72,7 @@ plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossib
 obstacle scores double, plus 75 for the clear. A **close call** (passing within 0.45 m of an obstacle, or clearing
 a jumpable with under 0.15 m to spare) scores 60. Landings and close calls multiply by your combo (×2, ×3 … up to
 ×8), and each one adds to it. The combo resets only when you get hit or wipe out. Speed builds only while you ride
-clean: a hit costs half the speed you've built up, a slip or wipeout 20%. The best score is saved in the browser.
+clean: a hit costs half the speed you've built up, a slip or wipeout 20%. The top 5 scores (with a name of up to 10 letters or numbers) are saved in the browser and shown on the title and game-over screens.
 
 Around you, pigeons and gulls on the ground take off as you ride up to them. A seagull flock wanders the sky and
 lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off again.
