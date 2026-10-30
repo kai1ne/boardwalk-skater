@@ -257,7 +257,7 @@ const GAME = {
   },
   crowd: { sideWalkers: 0.015 },           // share of the off-lane crowd kept (walkers, cyclists, sitters, performers): 0.015 ≈ as many people per side
                                            // strip as per lane; 1 = the full phase-1 crowd
-  score: { distance: [[0, 0], [100, 30], [500, 200], [1000, 500], [2000, 1200], [3000, 2500], [5000, 6000]],   // [feet, total points by then]: straight lines between marks, the last rate carries on past the end
+  score: { milestones: [[100, 500], [500, 500], [1000, 1000], [2000, 1500], [3000, 3000], [5000, 7000], [10000, 16500]],   // [feet, one-time bonus]: distance scores only at these marks
            ollieMin: 25, ollieMax: 100,   // ollie points scale with jump height
            overObstacle: 2,                // multiplier for a jump that cleared an obstacle
            clear: 75, comboMax: 8,         // the combo chains landed jumps and close calls; it resets on a hit or a wipeout

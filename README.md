@@ -88,7 +88,7 @@ round again). Losing doesn't reset it: the next run carries on where the last on
 in the lanes and off them) and the shops are shuttered. At midday and golden hour it's at its busiest and every shop is
 open, with shoppers out front and signs in the right-hand lane.
 
-Score for distance builds up along these marks: 100 ft 30, 500 ft 200, 1,000 ft 500, 2,000 ft 1,200, 3,000 ft 2,500, 5,000 ft 6,000, and 175 per 100 ft beyond that. A jump is worth 25–100 depending on its height,
+Distance scores one-time bonuses when you reach each mark (the HUD shows feet): 100 ft +500, 500 ft +500, 1,000 ft +1,000, 2,000 ft +1,500, 3,000 ft +3,000, 5,000 ft +7,000, 10,000 ft +16,500. There are no distance points between marks. A jump is worth 25–100 depending on its height,
 plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossible 400. A jump that clears an
 obstacle scores double, plus 75 for the clear. A **close call** (passing within 0.45 m of an obstacle, or clearing
 a jumpable with under 0.15 m to spare) scores 60. Landings and close calls multiply by your combo (×2, ×3 … up to
