@@ -173,7 +173,7 @@ const GAME = {
     poop:       { kind: 'slip', w: 0.7, h: 0.12, d: 0.7, clear: 0.12 },
     crossBike:  { kind: 'solid', w: 1.8, h: 1.8, d: 0.7, clear: null, dmg: 35 },   // w is along x: they ride across the lanes
     crossSkate: { kind: 'solid', w: 1.0, h: 1.8, d: 0.7, clear: null, dmg: 35 },
-    vehicle:    { kind: 'solid', w: 2.1, h: 2.0, d: 5.4, clear: null, dmg: 35 },   // police SUV / lifeguard pickup rolling up the boardwalk across two lanes
+    vehicle:    { kind: 'solid', w: 2.1, h: 2.0, d: 5.4, clear: null, dmg: 45 },   // police SUV / lifeguard pickup rolling up the boardwalk across two lanes
   },
   spawn: { ahead: 70, aheadTime: 3.5,     // rows are spawned at least 70 m and at least 3.5 s ahead of the skater
            despawn: 8,                     // m behind the skater that they are recycled
@@ -1588,7 +1588,7 @@ const PHASES = [
     horizonFog: 0.4, skyI: 0.9, sunDisc: 0, sunGlow: 0.6, exposure: 1.45, bloom: 0.85, godrays: 0, night: 1, wet: 0.35, crowd: 0.18, open: 0, shadowR: 4, shadowI: 0.45, envGround: C('#22262f') },
 ];
 const phaseState = {}; for (const k in PHASES[0]) phaseState[k] = PHASES[0][k] && PHASES[0][k].isColor ? PHASES[0][k].clone() : PHASES[0][k];
-const PHASE_LEN = 260, BLEND_START = 140;   // s per phase: 140 s held, then a 120 s blend into the next
+const PHASE_LEN = 130, BLEND_START = 70;   // s per phase: 70 s held, then a 60 s blend into the next
 let cycleT = 0, cyclePaused = false;
 function computePhase() {
   const n = PHASES.length; const t = ((cycleT % (PHASE_LEN * n)) + PHASE_LEN * n) % (PHASE_LEN * n);

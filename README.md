@@ -31,7 +31,7 @@ Debug keys:
 | Key | Action |
 |---|---|
 | 1–4 | Jump to a lighting phase: overcast morning, sunny midday, golden hour, blue hour |
-| G | Hold or resume the lighting cycle (260 s per phase: 140 s held, then a 120 s blend into the next) |
+| G | Hold or resume the lighting cycle (130 s per phase: 70 s held, then a 60 s blend into the next) |
 | J | Clothing fit test: the game holds still and the camera orbits the player (walk, idle, skate stance, ollie, kickflip, bail); J again for a character in a hoodie, J again to exit |
 | L | Character lineup: 24 characters in two rows (the game holds still) |
 | K | Close-up at 2 m, stepping through the lineup characters one by one |
@@ -44,7 +44,7 @@ Debug keys:
 
 Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride without damage) to 230 km/h.
 
-- **Health** (top right): every obstacle you run into costs health: 35 for people of any kind and for vehicles
+- **Health** (top right): every obstacle you run into costs health: 45 for vehicles, 35 for people of any kind
   (3 hits end the run), 25 for trash cans and shop signs, 20 for cones, dogs and leads, 10 for slipping on pizza or
   poop, and 20 for a wipeout. Each obstacle can only hit you once, and there's no invincibility window, so
   back-to-back hits each count. A hit gives a short camera jolt. After 8 s without damage, health slowly refills
@@ -65,7 +65,7 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
 - **Shop signs:** while the shops are open, stand-up signs go out in the right-hand lane in front of the shops they
   belong to: PIZZA HERE at a pizza place, BEST COFFEE IN THE WORLD at a café, 2 FOR $30 SUNGLASSES at a sunglasses
   shop, $5 TATTOOS at a tattoo parlour, and a green leaf at a (green) dispensary. They can be jumped.
-- **Vehicles:** from 600 m on, now and then a police SUV or a lifeguard pickup rolls slowly up the boardwalk toward
+- **Vehicles:** from 600 m on, now and then a police SUV or a yellow lifeguard pickup rolls slowly up the boardwalk toward
   you across two lanes. Change lane. Walkers and riders in its lanes always head the same way it does, so nobody
   walks into it.
 - You can't jump walkers, riders, influencers or smokers either, so change lane.
@@ -186,8 +186,9 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   `shopsBetween()` hands game.js the shops ahead; while `phase.open` is up, about 65% of them put a sign out in the
   right-hand lane, never two within 30 m. Signs within 1.5 s of travel of a row are validated with it (as jumps in
   that lane); the rest stand between rows, far enough from both to carve around.
-- **Vehicles (vehicles.js):** procedural police cars, police SUVs and lifeguard pickups: a side profile with wheel
-  arches extruded across the width, a tinted cabin, a canvas livery, door lettering and spinning wheels. Driving
+- **Vehicles (vehicles.js):** procedural police cars, police SUVs and lifeguard pickups: a side profile with filleted
+  corners and wheel arches extruded with a deep rounded bevel, tucked in above the beltline and tapered at the nose and
+  tail, a curved cabin that leans in toward the roof (framed windows and roof panel painted on), a canvas livery, door lettering and spinning wheels (lifeguard pickups are yellow with red accents). Driving
   ones are a two-lane obstacle (`vehicle` pattern, from stage 2) that moves toward the skater and meets the row line
   when you do. The next row starts past where the car set out, a car never takes a lane a faster oncoming rider is
   using, and walkers or riders spawned in its lanes while it's on the road always head the same way it does, so

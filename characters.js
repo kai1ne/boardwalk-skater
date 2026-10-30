@@ -1074,7 +1074,9 @@ export async function createCharacters(ctx) {
 
   // the half-res GTAO pass skips distant rigs and billboards (their contact AO is sub-pixel anyway)
   const aoHidden = [];
-  function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
+  // (the camera-flash / bell sprites and smoke puffs are see-through: the AO pass would draw them as solid quads and
+  // darken a box over whoever is behind them)
+  function beforeAO() { aoHidden.length = 0; impostors.visible = false; for (const o of CUES.concat(PUFFS)) if (o.visible) { o.visible = false; aoHidden.push(o); } for (const sex of ['M', 'F']) for (const r of POOL[sex]) if (r.agent && r.agent.dist > 25 && r.wrap.visible) { r.wrap.visible = false; aoHidden.push(r.wrap); } }
   function afterAO() { impostors.visible = true; for (const w of aoHidden) w.visible = true; }
   const api = { frozen: false, walkerScale: 1, update, addGameWalker, addGameCyclist, addGameSkater, addGameStation, setClip, cue, lineup, fitView, fitClip, fitRig: () => FIT.rig, removeGameWalker, removeGameAgent: removeGameWalker, beforeAO, afterAO, makeBreakStage, stats, CLIP, clipNames, BODY, POOL, APPS, WALKERS, CYCLISTS, DOGS, skaterRig: sk, atlas: atlasRT, impostors, crowdGroup };
   return api;
