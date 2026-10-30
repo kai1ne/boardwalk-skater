@@ -924,7 +924,7 @@ export async function createCharacters(ctx) {
     SKT.vx = lerp(SKT.vx, (S.x - SKT.prevX) / Math.max(dt, 1e-4), 1 - Math.exp(-dt * 6)); SKT.prevX = S.x;
     if (P.lean !== undefined) SKT.lean = P.lean;
     else { const targetLean = clamp(-SKT.vx * 0.22, -0.3, 0.3); SKT.lean = lerp(SKT.lean, S.moving ? targetLean : 0, 1 - Math.exp(-dt * 5)); }
-    const air = P.air || 0, airN = P.airN || 0, flick = P.flick || 0, lift = P.lift || 0, off = P.offBoard || 0, flail = P.flail || 0;
+    const air = P.air || 0, airN = P.airN || 0, flick = P.flick || 0, lift = P.lift || 0, off = P.offBoard || 0, flail = P.flail || 0, charge = P.charge || 0;
     const crouch = 0.22 + Math.sin(t * 1.3) * 0.03 + (P.crouch || 0) + Math.abs(SKT.lean) * 0.3;
     // board: pops around the tail (lift compensates the nose-up pitch), flips about its long axis
     const pitch = P.pitch || 0, roll = (P.roll || 0) + SKT.lean * 0.45;
@@ -944,9 +944,10 @@ export async function createCharacters(ctx) {
     skater.getWorldQuaternion(_bw); _f.set(0, 0, -1).applyQuaternion(_bw); _r.set(1, 0, 0).applyQuaternion(_bw); _u.set(0, 1, 0).applyQuaternion(_bw);
     // upper body: twist toward travel, forward bend with crouch, arms out for balance (rising in the air, windmilling when off balance)
     rotWorld(B.spine_02, _u, 0.32 * st); rotWorld(B.spine_01, _f, (0.12 + crouch * 0.35) * st); rotWorld(B.neck_01, _u, 0.45 * st); rotWorld(B.Head, _u, 0.42 * st);
-    const armOut = 0.85 + airN * 0.7 + flick * 0.3 + Math.sin(t * 2.1) * 0.06;
+    const armOut = 0.85 + airN * 0.7 + flick * 0.3 + Math.sin(t * 2.1) * 0.06 - charge * 0.5;   // arms drop and reach forward as the charge winds up
     rotWorld(B.upperarm_l, _r, (armOut + flail * Math.sin(t * 15) * 0.7) * st); rotWorld(B.upperarm_r, _r, (-armOut - flail * Math.sin(t * 15 + 1.7) * 0.7) * st);
     rotWorld(B.upperarm_l, _f, SKT.lean * 0.5 + flail * 0.5); rotWorld(B.upperarm_r, _f, SKT.lean * 0.5 - flail * 0.5);
+    if (charge) { rotWorld(B.spine_02, _f, charge * 0.3 * st); rotWorld(B.neck_01, _f, -charge * 0.5 * st); rotWorld(B.lowerarm_l, _r, charge * 0.7 * st); rotWorld(B.lowerarm_r, _r, -charge * 0.7 * st); }
     sk.root.updateMatrixWorld(true);
     // feet: IK onto the deck (left = front foot toward the nose); during a flip they hover over the
     // un-rolled board, and the front foot flicks out toward the toe edge

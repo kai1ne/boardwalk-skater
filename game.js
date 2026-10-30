@@ -328,7 +328,8 @@ export function createGame(ctx) {
   function breakCombo() { if (st.combo > 1 && st.mode === 'playing') popup('combo lost', 'bad'); st.combo = 0; st.comboT = 0; }
   function damage(n, label) {
     if (st.mode !== 'playing') return;
-    st.health = Math.max(0, st.health - n); st.sinceHit = 0; st.rampT *= n >= HP.hit ? G.speed.hitRampKeep : G.speed.slipRampKeep;   // damage costs built-up speed if (bot.on) bot.hits++; flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
+    st.health = Math.max(0, st.health - n); st.sinceHit = 0; st.rampT *= n >= HP.hit ? G.speed.hitRampKeep : G.speed.slipRampKeep;   // damage costs built-up speed
+    if (bot.on) bot.hits++; flash(ui.healthBar); popup(`${label}  −${n}`, 'bad');
     if (st.health <= 0) gameOver();
   }
   function startGame() {
@@ -372,7 +373,7 @@ export function createGame(ctx) {
     if (sk.mode === 'slip') sk.speed = sk.slipSpeed;   // got away clean
     setMode('charge'); sk.chargeT = 0; sk.jumpHeld = true; return true;
   }
-  function chargeFrac() { return smooth(0, J.chargeTime, sk.chargeT); }
+  function chargeFrac() { return clamp(sk.chargeT / J.chargeTime, 0, 1); }
   // the jump's height picks the trick: a quick tap is a plain ollie, then kickflip → heelflip → hardflip → 360 flip → impossible
   function trickFor(f) { if (f < TR.ollieBelow) return null; const o = TR.order; return o[Math.min(o.length - 1, Math.floor((f - TR.ollieBelow) / (1 - TR.ollieBelow) * o.length))]; }
   function pop() {
@@ -439,7 +440,7 @@ export function createGame(ctx) {
     switch (sk.mode) {
       case 'charge': sk.chargeT += dt;
         if (sk.demoHold !== undefined && sk.chargeT >= sk.demoHold) { sk.jumpHeld = false; sk.demoHold = undefined; }
-        if ((!sk.jumpHeld && sk.chargeT >= J.minCrouch) || sk.chargeT >= J.maxHold) pop(); break;
+        if (!sk.jumpHeld && sk.chargeT >= J.minCrouch) pop(); break;   // held: stays crouched until released
       case 'air':
         sk.airT += dt; sk.vy -= J.gravity * dt; sk.y += sk.vy * dt;
         if (sk.trick) { sk.trick.t += dt; if (sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; } }
@@ -457,7 +458,7 @@ export function createGame(ctx) {
   function writePose(lean) {
     const P = S.pose; for (const k in P) P[k] = 0; P.flipping = false; P.lean = lean; P.stance = sk.stance;
     switch (sk.mode) {
-      case 'charge': P.crouch = 0.25 + 0.5 * chargeFrac() * smooth(0, J.minCrouch, sk.chargeT) + 0.1 * smooth(0, J.minCrouch, sk.chargeT); break;
+      case 'charge': P.charge = chargeFrac(); P.crouch = lerp(J.crouchStart, J.crouchFull, P.charge) * smooth(0, J.minCrouch, sk.chargeT); break;
       case 'air': { const u = clamp(sk.airT / sk.airDur, 0, 1); P.air = sk.y; P.airN = clamp(sk.y / J.maxHeight, 0, 1);
         P.pitch = u < 0.35 ? Math.sin(u / 0.35 * Math.PI) * 0.42 : 0;
         P.crouch = lerp(-0.15, 0.3 + 0.25 * sk.jumpF, smooth(0.12, 0.55, u)) - 0.25 * smooth(0.8, 1, u);   // pop extends, legs tuck (more on big jumps), then reach for the ground
@@ -662,29 +663,38 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   // Input
   // -------------------------------------------------------------------------------------
-  const LEFT = ['ArrowLeft', 'a', 'A'], RIGHT = ['ArrowRight', 'd', 'D'], JUMP = ['ArrowUp', ' ', 'w', 'W'];
+  // every key goes through a named action (GAME.input); press / release are what touch controls can call later
+  const ACTIONS = {}; for (const a in G.input) for (const k of G.input[a]) (ACTIONS[k] ||= []).push(a);
+  function press(a) {   // returns true if the action did something on this screen
+    if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); return true; } return false; }
+    if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } return false; }
+    if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { startGame(); return true; } return false; }
+    switch (a) {
+      case 'pause': setPaused(true); return true;
+      case 'laneLeft': sk.held[-1] = true; pressLane(-1); return true;
+      case 'laneRight': sk.held[1] = true; pressLane(1); return true;
+      case 'crouchJump': pressJump(); return true;
+      case 'flipUp': case 'flipDown': switchStance(); return true;
+    }
+    return false;
+  }
+  function release(a) { if (a === 'laneLeft') sk.held[-1] = false; else if (a === 'laneRight') sk.held[1] = false; else if (a === 'crouchJump') releaseJump(); }
   function keydown(e) {
     const k = e.key;
     if (k === 'h' || k === 'H') { debug = !debug; return true; }
     if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
-    if (st.paused) { if (k === 'Enter' || k === ' ' || k === 'Escape') { if (!e.repeat) setPaused(false); return true; } return LEFT.includes(k) || RIGHT.includes(k) || k === 'ArrowUp'; }
-    if (st.mode === 'title') { if ((k === 'Enter' || k === ' ') && !e.repeat) { startGame(); return true; } return k === ' ' || k.startsWith('Arrow'); }
-    if (st.mode === 'over') { if ((k === 'Enter' || k === ' ') && !e.repeat && st.overT > G.overDelay && !entering) startGame(); return k === ' ' || k.startsWith('Arrow') || k === 'Enter'; }
-    if (k === 'Escape') { setPaused(true); return true; }
-    if (LEFT.includes(k)) { if (!e.repeat) { sk.held[-1] = true; pressLane(-1); } return true; }
-    if (RIGHT.includes(k)) { if (!e.repeat) { sk.held[1] = true; pressLane(1); } return true; }
-    if ((k === 'ArrowUp' || k === 'ArrowDown') && sk.mode === 'air') { if (!e.repeat) switchStance(); return true; }
-    if (k === 'ArrowDown') return true;
-    if (JUMP.includes(k)) { if (!e.repeat) pressJump(); return true; }
-    return false;
+    const acts = ACTIONS[k]; if (!acts) return false;
+    if (acts[0] === 'credits') return !e.repeat && press('credits');   // C stays the debug camera unless a screen uses it
+    if (!e.repeat) for (const a of acts) if (press(a)) break;
+    return true;   // preventDefault on every game key, so arrows and Space never scroll the page
   }
-  function keyup(e) { const k = e.key; if (LEFT.includes(k)) sk.held[-1] = false; if (RIGHT.includes(k)) sk.held[1] = false; if (JUMP.includes(k)) releaseJump(); }
+  function keyup(e) { for (const a of ACTIONS[e.key] || []) release(a); }
   window.addEventListener('blur', () => { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; setPaused(true); } });
 
   renderScores(); showScreens();
   return {
-    update, keydown, keyup,
+    update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
     st, sk, OBS, LANE_X, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,

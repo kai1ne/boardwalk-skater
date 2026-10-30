@@ -126,6 +126,9 @@ const Q = QUALITY[PLATFORM];
 
 // ---- GAME: every gameplay tuning value (phase 2) -------------------------------------------
 const GAME = {
+  // keyboard → named actions (game.js press/release). Touch controls can call the same actions later.
+  input: { crouchJump: [' '], laneLeft: ['ArrowLeft', 'a', 'A'], laneRight: ['ArrowRight', 'd', 'D'], flipUp: ['ArrowUp'], flipDown: ['ArrowDown'],
+           pause: ['Escape'], confirm: ['Enter', ' '], credits: ['c', 'C'] },
   lanes: { count: 4, width: 2.1,          // 4 lanes across the 9 m boardwalk, centres at ±1.05 / ±3.15 m
            carveRatio: 0.3,                // sideways speed of a lane carve as a share of forward speed (0.3 → 0.9 s per lane at 27 km/h, 0.45 s at 58 km/h)
            carveMin: 0.4, carveMax: 1.2,   // s limits on one carve
@@ -140,9 +143,9 @@ const GAME = {
            crashDecel: 9 },
   jump: { minHeight: 0.4,                  // m apex of a quick tap ollie (board bottom)
           maxHeight: 1.05,                 // m apex of a fully charged ollie
-          chargeTime: 0.32,                // s of holding the jump key for full height
-          maxHold: 0.55,                   // s after which a held jump pops on its own
+          chargeTime: 0.45,                // s of holding Space to go from no charge to full; holding longer just stays crouched
           minCrouch: 0.05,                 // s shortest wind-up before the pop
+          crouchStart: 0.3, crouchFull: 1.25,   // crouch depth at no charge / full charge (see updateSkater in characters.js)
           gravity: 12.4,                   // m/s²: 0.4 m → 0.51 s in the air, 1.05 m → 0.82 s
           landTime: 0.26,                  // s knee flex on landing (can jump again straight away)
           coyote: 0.1 },                   // s grace: a jump pressed just after touching a slip hazard still clears it
