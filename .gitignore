@@ -1,3 +1,5 @@
 .DS_Store
 # Original asset zips (provenance only, not loaded; 123 MB exceeds GitHub's file limit)
 assets/characters/_src/
+# Google Street View screenshots: private reference only, never publish
+reference/
