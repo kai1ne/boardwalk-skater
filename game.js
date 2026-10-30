@@ -399,7 +399,7 @@ export function createGame(ctx) {
     if (st.mode === 'playing') { f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); st.energy -= ollieCost(f); }
     const h = lerp(J.minHeight, J.maxHeight, f);
     setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
-    sk.tricks = []; sk.clearedThisJump = 0; st.jumped = true;
+    sk.tricks = []; sk.clearedThisJump = 0; st.jumped = true; sk.botTried = false;
     sk.trick = null; sk.flip = null; sk.attempted = false;
   }
   // ↑/↓ in the air start a trick (one per jump): after the first press, wait up to flipWindow for a second press, then flip.
@@ -428,7 +428,7 @@ export function createGame(ctx) {
     save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
   }
   function bail() {
-    sk.trick = null; sk.flip = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+    if (bot.on) bot.bails++; sk.trick = null; sk.flip = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
@@ -449,6 +449,7 @@ export function createGame(ctx) {
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
     let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); if (!bot.on && !save.tricks[t]) { save.tricks[t] = true; writeSave(); } }
+    if (bot.on) bot.landed += sk.tricks.length;
     if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', 'Try ↑ or ↓ in the air');
     const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');   // a trick's popup shows its own points; the score tag shows the jump's total
@@ -580,7 +581,7 @@ export function createGame(ctx) {
   // the normal carve and jumps with the normal charge. It counts a "trap" whenever no lane it can
   // reach has a way through, which would mean an unfair row.
   // -------------------------------------------------------------------------------------
-  const bot = { on: false, runs: 0, hits: 0, trapped: 0, trapLog: [], time: 0, spawned: 0, lastTrapZ: 1e9, label: null };
+  const bot = { on: false, runs: 0, hits: 0, tried: 0, landed: 0, bails: 0, trapped: 0, trapLog: [], time: 0, spawned: 0, lastTrapZ: 1e9, label: null };
   const fullAir = 2 * Math.sqrt(2 * J.maxHeight / J.gravity), tapAir = 2 * Math.sqrt(2 * J.minHeight / J.gravity);
   function botCells(v, look) {
     const lanes = LANE_X.map(() => []);
@@ -626,22 +627,26 @@ export function createGame(ctx) {
     const tTrap = Math.min(steps, Math.ceil(((N - 1) * carveTime(v) + 0.4) / dtp)); let trapC = Infinity; for (let l = 0; l < N; l++) trapC = Math.min(trapC, dp[tTrap][l]);
     return { cost: best, move, trapped: trapC >= 1e6 };
   }
+  function botJump(hold) { press('crouchJump'); if (sk.mode === 'charge') sk.demoHold = hold; }
   function autopilot() {
     if (st.mode === 'title') { startGame(); bot.runs++; return; }
     if (st.mode === 'over') { if (st.overT > G.overDelay + 0.5) { startGame(); bot.runs++; } return; }
     const v = Math.max(sk.speed, 1), lanes = botCells(v, v * 4 + 4), plan = botPlan(v, lanes);
     if (plan.trapped && Math.abs(S.z - bot.lastTrapZ) > 15) { bot.trapped++; bot.lastTrapZ = S.z;
       if (bot.trapLog.length < 20) bot.trapLog.push({ dist: Math.round(st.dist), stage: stage(), lane: sk.lane, x: +sk.x.toFixed(2), energy: Math.round(st.energy), lanes: lanes.map((c) => c.map((x) => `${x.kind}@${x.d.toFixed(1)}`).join(' ')) }); }
-    if (plan.move && !sk.queue.length && sk.chT < 0) pressLane(plan.move);
+    if (plan.move && !sk.queue.length && sk.chT < 0) { const a = plan.move < 0 ? 'laneLeft' : 'laneRight'; press(a); release(a); }
     // jumps: a full ollie timed so the apex is over a jumpable, a quick hop over a slip hazard
     const cur = clamp(Math.round((sk.x - LANE_X[0]) / L.width), 0, LANE_X.length - 1);
     if (grounded() && Math.abs(sk.x - LANE_X[cur]) < 0.4) {
       const ahead = lanes[cur].filter((x) => x.d > 0 && x.kind !== 'solid').sort((a, b) => a.d - b.d)[0];
       if (ahead) {
-        if (ahead.kind === 'jump' && ahead.d <= v * (J.chargeTime + 0.5 * fullAir) - ahead.depth / 2) { if (startCharge()) sk.demoHold = J.chargeTime; }
-        else if (ahead.kind === 'slip' && ahead.d <= v * (J.minCrouch + 0.5 * tapAir)) { if (startCharge()) sk.demoHold = 0; }
-      }
+        if (ahead.kind === 'jump' && ahead.d <= v * (J.chargeTime + 0.5 * fullAir) - ahead.depth / 2) { botJump(J.chargeTime); }
+        else if (ahead.kind === 'slip' && ahead.d <= v * (J.minCrouch + 0.5 * tapAir)) { botJump(0); }
+      } else if (st.energy > 60 && Math.random() < 0.012 && !lanes[cur].some((x) => x.d > 0 && x.d < v * 1.6)) botJump(rand(0.2, J.chargeTime));   // a free jump to throw a trick
     }
+    // in the air: throw a random trick that can still land, using the same keys as a player
+    if (sk.mode === 'air' && !sk.botTried) { sk.botTried = true; const a = availableFlips();
+      if (a.length) { bot.tried++; for (const c of a[Math.floor(Math.random() * a.length)]) press(c === 'U' ? 'flipUp' : 'flipDown'); } }
   }
   function setAutopilot(on) {
     bot.on = on; if (!bot.label) { bot.label = document.createElement('div'); bot.label.id = 'gBot'; bot.label.textContent = 'AUTOPILOT'; document.body.appendChild(bot.label); }
@@ -649,7 +654,7 @@ export function createGame(ctx) {
   }
   function botReport() {
     const min = bot.time / 60;
-    return { minutes: +min.toFixed(2), runs: bot.runs, obstaclesPerMin: +(bot.spawned / Math.max(min, 1e-3)).toFixed(1), hits: bot.hits, trapped: bot.trapped, trapLog: bot.trapLog,
+    return { minutes: +min.toFixed(2), runs: bot.runs, obstaclesPerMin: +(bot.spawned / Math.max(min, 1e-3)).toFixed(1), hits: bot.hits, hitsPerMin: +(bot.hits / Math.max(min, 1e-3)).toFixed(1), tricksTried: bot.tried, tricksLanded: bot.landed, bails: bot.bails, trapped: bot.trapped, trapLog: bot.trapLog,
       stage: stage(), dist: Math.round(st.dist), nearMisses: st.nearMisses, patterns: { ...director.stats.patterns }, rejected: director.stats.rejected, violations: director.stats.violations.slice(-5) };
   }
 

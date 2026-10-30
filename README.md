@@ -20,23 +20,31 @@ loads from jsDelivr through an import map.
 | Key | Action |
 |---|---|
 | Enter / Space | Start, or restart after game over |
-| ← → or A D | Tap to carve one lane; hold to keep sliding across lanes without stopping |
-| ↑ or Space (or W) | Jump. A quick tap is always a plain ollie. Hold longer (up to about 0.3 s) to jump higher; the height picks the trick: kickflip → heelflip → hardflip → 360 flip → impossible |
-| ↑ or ↓ in the air | Switch feet: the body turns so the other foot leads (regular ↔ switch). You land and keep riding that way; landing a switch adds 50 |
-| Esc | Pause or resume (the game also pauses when the tab is hidden) |
+| ← → or A D | Tap to carve one lane; hold to keep sliding across lanes without stopping. Works on the ground, crouched and in the air |
+| Space | Hold to crouch and charge, release to jump. A quick tap is a plain ollie; a longer hold jumps higher (full charge at 0.45 s). Keep holding and he stays crouched |
+| ↑ / ↓ in the air | Tricks (one per jump). They aren't listed in the game: you discover them |
+| ↓ on the ground | Swap which foot leads |
+| Esc | Pause; Esc, Enter or Space resume with a 3-2-1. The game also pauses when the tab is hidden or the window loses focus |
+| C | Credits, on the title screen |
+
+Tricks: ↑ kickflip · ↓ heelflip · ↑↑ 360 flip · ↓↓ impossible · ↑↓ or ↓↑ hardflip (hidden bonus). Each needs a minimum jump height
+(0.60, 0.60, 0.85, 0.95 and 0.75 m) and enough air left to finish. If not, he bails: cone damage, combo lost, a slowdown and a
+moment of invincibility. Energy still limits jump height, so big tricks need energy in the bank.
 
 Debug keys:
 
 | Key | Action |
 |---|---|
-| 1–4 | Jump to a lighting phase: overcast morning, sunny midday, golden hour, blue hour |
-| G | Hold or resume the lighting cycle (130 s per phase: 70 s held, then a 60 s blend into the next) |
+| 1–4 | Jump to a phase: 1 sunny midday, 2 golden hour, 3 overcast fog, 4 blue hour |
+| G | Hold or resume the weather cycle (60 s per phase, the last 8 s blending into the next) |
+| T | Trick debug overlay: charge, crouch, apex, tricks available, flip window, air left |
+| ` | Show the fps and debug-key strip |
 | J | Clothing fit test: the game holds still and the camera orbits the player (walk, idle, skate stance, ollie, kickflip, bail); J again for a character in a hoodie, J again to exit |
 | L | Character lineup: 24 characters in two rows (the game holds still) |
 | K | Close-up at 2 m, stepping through the lineup characters one by one |
 | P | Autopilot: a bot plays the game (shown as AUTOPILOT at the top) |
 | H | Draw the collision boxes (cyan = skater, red = solid, orange = jumpable, yellow = slip), including each part of a dog-walker pair |
-| C | Switch between the chase camera and an eye-level (1.7 m) camera |
+| C | During a run: switch between the chase camera and an eye-level (1.7 m) camera |
 | O | Turn ambient occlusion (GTAO) on or off |
 
 ## How to play
@@ -48,8 +56,8 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
   poop, and 20 for a wipeout. Each obstacle can only hit you once, and there's no invincibility window, so
   back-to-back hits each count. A hit gives a short camera jolt. After 8 s without damage, health slowly refills
   at 1.5 per second.
-- **Energy**: every jump costs 8–40 depending on how high you go (the trick comes with the height). It refills at
-  6 per second. A big jump with too little energy is cut down to what you can afford, so you get a lower trick. While you hold jump, the dark end of the bar shows what the
+- **Energy**: every jump costs 8–40 depending on how high you go. It refills at
+  6 per second. A big jump with too little energy is cut down to what you can afford, so a big trick may be out of reach. While you hold jump, the dark end of the bar shows what the
   jump will cost. With no energy you can't jump.
 - **Walkers** go both ways. Some stop for a moment, some drift over into the next lane.
 - **Cyclists** and **other skaters** ride with you or toward you. Some skaters change lane, leaning for half a
@@ -73,10 +81,10 @@ Skate as far as you can. Speed starts at 27 km/h and climbs (only while you ride
   of touching one to get away clean.
 - People sitting at the sides (asking for change, smoking, drum circles), shoppers in front of the open shops and
   police cars parked on the grass or sand are scenery and never in your way.
-- At top speed a full charge takes about 5 m of travel, so start holding jump early for cans and cones.
+- At top speed a full charge takes about 29 m of travel, so start holding Space early for cans and cones.
 
-**The day:** every run starts on an overcast morning, then turns to sunny midday, golden hour and blue hour (and
-round again). On the overcast morning and at blue hour the boardwalk is quiet (fewer walkers, cyclists and skaters,
+**The weather:** every run starts in overcast fog, then turns to sunny midday, golden hour and blue hour (and
+round again). In the fog and at blue hour the boardwalk is quiet (fewer walkers, cyclists and skaters,
 in the lanes and off them) and the shops are shuttered. At midday and golden hour it's at its busiest and every shop is
 open, with shoppers out front and signs in the right-hand lane.
 
@@ -85,7 +93,7 @@ plus its trick: kickflip 150, heelflip 175, hardflip 250, 360 flip 325, impossib
 obstacle scores double, plus 75 for the clear. A **close call** (passing within 0.45 m of an obstacle, or clearing
 a jumpable with under 0.15 m to spare) scores 60. Landings and close calls multiply by your combo (×2, ×3 … up to
 ×8), and each one adds to it. The combo resets only when you get hit or wipe out. Speed builds only while you ride
-clean: a hit costs half the speed you've built up, a slip or wipeout 20%. The top 5 scores (with a name of up to 10 letters or numbers) are saved in the browser and shown on the title and game-over screens.
+clean: a hit costs half the speed you've built up, a slip or wipeout 20%. The top 5 scores (with a name of up to 10 letters or numbers) and the tricks you've discovered are saved in the browser (versioned key, `boardwalkSkater.save.v1`) and shown on the title and game-over screens.
 
 Around you, pigeons and gulls on the ground take off as you ride up to them. A seagull flock wanders the sky and
 lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off again.
@@ -174,11 +182,11 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 
 - **Tuning:** every gameplay number is in the `GAME` object near the top of `venice-boardwalk.html`. That covers the
   speed ramp (`speed.start`, `ramp`, `max`), lane carves (`lanes.carveRatio`, `carveMin`, `carveMax`, `recoverTime`, `lean`), the jump
-  (`jump.minHeight`, `maxHeight`, `chargeTime`, `gravity`, `coyote`), tricks (`tricks.ollieBelow`, `order`,
-  `durShare`, points), `energy` and `health`, `obstacles` (hitbox sizes and jump clearances), `spawn` (row
+  (`jump.minHeight`, `maxHeight`, `chargeTime`, `crouchStart`, `crouchFull`, `gravity`, `coyote`), tricks (`tricks.flipWindow`, `airMargin`,
+  `inputs`, each trick's `pts`, `minApex` and `dur`, and `bail`), `energy` and `health`, `obstacles` (hitbox sizes and jump clearances), `spawn` (row
   spacing, mover speeds, the skater lane-change telegraph, flash distance, crossing traffic), `director` (stages,
   pattern weights, gap slack, behaviour shares), and `score` (including `nearMiss`, `nearDist`, `nearJump`).
-  Each obstacle's `dmg` is the health it costs.
+  Each obstacle's `dmg` is the health it costs. `input` maps keys to named actions (`game.press` / `game.release`, ready for touch), and `pause`, `hints`, `save` and `weather` hold those systems' values.
 - **Shop signs:** shop stalls are tagged with a kind when the chunk templates are built (tattoo, pizza, coffee,
   sunglasses, dispensary; the café and the INK & IRON corner shop too), and the header sign matches it.
   `shopsBetween()` hands game.js the shops ahead; while `phase.open` is up, about 65% of them put a sign out in the
