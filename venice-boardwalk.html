@@ -10,6 +10,7 @@
   #hud { position: fixed; left: 12px; bottom: 12px; font: 12px/1.45 -apple-system, Helvetica, Arial, sans-serif; color: #fff;
          background: rgba(0,0,0,.38); padding: 6px 10px; border-radius: 6px; pointer-events: none; user-select: none; }
   #hud b { font-weight: 600; }
+  #hud.off { display: none; }
   #hud .k { opacity: .7; }
   /* ---- game HUD + screens ---- */
   #ghud { position: fixed; inset: 0; pointer-events: none; user-select: none; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff;
@@ -71,7 +72,7 @@
 </head>
 <body>
 <div id="loading">Building the boardwalk…</div>
-<div id="hud"></div>
+<div id="hud" class="off"></div>
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div></div><div id="gPops"></div></div>
@@ -1789,6 +1790,7 @@ function updatePost(t) {
 const hud = document.getElementById('hud');
 window.addEventListener('keydown', (e) => {
   if (game && game.keydown(e)) { e.preventDefault(); return; }
+  if (e.key === '`') { hud.classList.toggle('off'); return; }   // backtick shows the debug strip
   if (e.key >= '1' && e.key <= '4') { cycleT = (Number(e.key) - 1) * PHASE_LEN; }   // debug: jump the lighting phase
   else if (e.key === 'g' || e.key === 'G') cyclePaused = !cyclePaused;   // P is the autopilot, L/K the character lineup, J the fit test
   else if ((e.key === 'j' || e.key === 'J') && chars) setFit((FITV.mode + 1) % 3);
