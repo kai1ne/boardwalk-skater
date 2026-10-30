@@ -66,6 +66,9 @@
   .card .roll { overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 0 8px; }
   .card .roll .u { text-transform: none; }
   .card .roll h3 { margin: 12px 0 2px; font-size: 13px; letter-spacing: 1px; color: #ffd84a; } .card .roll p { margin: 0; opacity: .9; }
+  @media (max-height: 880px) { #gTitle .card { zoom: .9; } }   /* the title card is tall: scale it down so it fits shorter windows */
+  @media (max-height: 770px) { #gTitle .card { zoom: .76; } }
+  @media (max-height: 640px) { #gTitle .card { zoom: .62; } }
   .card .credit { margin-top: 16px; font-size: 12px; opacity: .6; }
   .card h2 { margin: 0 0 14px; font-size: 30px; font-weight: bold; }
   .card .sub { opacity: .8; font-size: 14px; margin-bottom: 18px; text-wrap: balance; }
@@ -110,9 +113,9 @@
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
 <div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
-  <div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div>
+  <div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div>
   <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
-  <div class="go">Press Enter or Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
+  <div class="go">Press Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
 <div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.png" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Best <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
@@ -123,7 +126,7 @@
   <h2 class="gfx">Credits</h2>
   <div class="roll" id="gCreditsRoll">
     <h3>Game</h3><p>Made by Calvin Bak</p>
-    <h3>Title and Game Over logos</h3><p>AI-generated images</p>
+    <h3>Title, Game Over and Paused logos</h3><p>AI-generated images</p>
     <h3>Skin tones</h3><p>Monk Skin Tone Scale by Dr. Ellis Monk, released by Google<br>CC BY 4.0 · <span class="u">skintone.google</span></p>
     <h3>Characters and hair</h3><p>Universal Base Characters [Standard] by Quaternius<br>CC0 · <span class="u">quaternius.itch.io/universal-base-characters</span></p>
     <h3>Animation</h3><p>Universal Animation Library [Standard] by Quaternius, with animator Gonzalo Furnier<br>CC0 · <span class="u">quaternius.itch.io/universal-animation-library</span></p>
@@ -135,7 +138,7 @@
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
 <div id="gCount"></div>
-<div id="gPause" class="screen"><div class="card"><h2>PAUSED</h2><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
+<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/paused-logo.png" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
