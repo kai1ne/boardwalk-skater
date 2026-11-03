@@ -71,6 +71,8 @@ licence requires.
 ## Title, Game Over, Paused and Credits logos
 
 `assets/ui/title-logo.png`, `assets/ui/gameover-logo.png`, `assets/ui/paused-logo.png` and `assets/ui/credits-logo.png` are AI-generated images supplied by Calvin Bak.
+The share preview image (`assets/ui/share.jpg`) is that title logo over a screenshot of the game. The favicon
+(`icon.svg`, `favicon.ico`, `apple-touch-icon.png`) is a skateboard drawn in code in the logo's colours.
 
 ## Music
 

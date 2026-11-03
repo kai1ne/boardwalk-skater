@@ -119,6 +119,8 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
 - `audio.js` — the sound graph (master mute and limiter) and the music playlist: two streamed `<audio>` elements, a
   shuffled order that repeats forever, and a crossfade between tracks (`GAME.audio` in the HTML holds the numbers).
+- `icon.svg`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
+  (Open Graph / X card tags in both HTML pages).
 - `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).
 - `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
 
