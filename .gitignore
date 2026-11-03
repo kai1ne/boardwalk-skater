@@ -9,3 +9,6 @@ server/.env
 server/.env.*
 server/node_modules/
 server/.wrangler/
+
+# full-quality music originals (the game ships compressed copies in assets/music/)
+music-originals/

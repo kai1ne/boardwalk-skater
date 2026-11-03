@@ -133,6 +133,7 @@
     <h3>Animation</h3><p>Universal Animation Library [Standard] by Quaternius, with animator Gonzalo Furnier<br>CC0 · <span class="u">quaternius.itch.io/universal-animation-library</span></p>
     <h3>Dogs</h3><p>Shiba Inu by Quaternius · CC0 · <span class="u">poly.pizza/m/y4wdQpg767</span><br>Husky by Quaternius · CC0 · <span class="u">poly.pizza/m/wcWiuEqwzq</span></p>
     <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
+    <h3>Music</h3><p id="gMusicCredits"></p>
     <h3>Global leaderboard</h3><p>Hosted on Cloudflare Workers and D1. Scores are stored online with a name, score and date only.</p>
     <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
     <h3>Made in code for this game</h3><p>Buildings, signs, murals, clothing, skateboards, bikes, cars, props, birds, sky and all other procedural art. All business names, tags and ads are invented.</p>
@@ -200,6 +201,12 @@ const GAME = {
   hints: { holdAfter: 60, airAfter: 3 },   // s of play with no jump before "Try holding Space"; jumps with no trick attempt before "Try ↑ or ↓ in the air"
   leaderboard: { timeoutMs: 5000, cacheKey: 'boardwalkSkater.top5.v1' },   // the global top 5 (server URL: LEADERBOARD_URL in game.js)
   save: { key: 'boardwalkSkater.save.v1', nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
+  audio: { folder: 'assets/music/', saveKey: 'boardwalkSkater.audio.v1',   // tracks: MUSIC_TRACKS at the top of game.js
+           musicVolume: 0.35,              // default music volume (- / = change it in 5% steps; N mutes the music, M everything)
+           crossfade: 3,                   // s the next track overlaps the end of the current one
+           pauseFade: 0.25, resumeFade: 0.4,   // s fades when the game pauses / resumes
+           limiter: { threshold: -1 },     // dBFS where the master limiter catches peaks
+           duck: { db: 3, attack: 0.05, hold: 0.3, release: 0.6 } },   // dip under sound effects (none yet)
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)

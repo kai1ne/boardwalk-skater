@@ -72,6 +72,15 @@ licence requires.
 
 `assets/ui/title-logo.png`, `assets/ui/gameover-logo.png`, `assets/ui/paused-logo.png` and `assets/ui/credits-logo.png` are AI-generated images supplied by Calvin Bak.
 
+## Music
+
+AI-generated with Suno, supplied by Calvin Bak (`assets/music/`):
+
+- "LA, It Ain't What It Seems" by tonefreshhh. AI-generated with Suno.
+- "West Coast Ska Dub" by tonefreshhh. AI-generated with Suno.
+
+Suno plan and terms link: not filled in yet (`tool`, `plan` and `termsUrl` in `MUSIC_TRACKS` in `game.js`).
+
 ## Procedural (canvas-generated, original)
 
 Generated at runtime, with no external assets: corrugated roofing and roll-up shutter normal maps, stucco, stone

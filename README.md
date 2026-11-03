@@ -26,6 +26,12 @@ loads from jsDelivr through an import map.
 | ↓ on the ground | Swap which foot leads |
 | Esc | Pause; Esc, Enter or Space resume. The game also pauses when the tab is hidden or the window loses focus |
 | C | Credits, on the title screen |
+| M | Mute or unmute all sound |
+| N | Mute or unmute the music |
+| - / = | Music volume down / up (5% steps; default 35%) |
+
+Music starts with the first key press (browsers don't allow sound before one), pauses and resumes with the game, and
+fades in and out. The mute and volume settings are saved in this browser.
 
 Tricks: ↑ kickflip · ↓ heelflip · ↑↑ 360 flip · ↓↓ impossible · ↑↓ or ↓↑ hardflip (hidden bonus). Each needs a minimum jump height
 (0.60, 0.60, 0.85, 0.95 and 0.75 m) and enough air left to finish. If not, he bails: cone damage, combo lost, a slowdown and a
@@ -111,7 +117,23 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `characters.js` — the rigged crowd, skater, cyclists and dogs (imported dynamically; if it fails to load, the scene
   falls back to the old block figures).
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
+- `audio.js` — the sound graph (master mute and limiter) and the music playlist: two streamed `<audio>` elements, a
+  shuffled order that repeats forever, and a crossfade between tracks (`GAME.audio` in the HTML holds the numbers).
+- `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).
 - `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
+
+## Adding a music track
+
+1. Put the MP3 in `assets/music/`. Use a plain file name (lowercase, hyphens, no spaces or apostrophes). Keep it to
+   about 128 kbps (about 1 MB a minute). If you have ffmpeg, `ffmpeg -i original.mp3 -b:a 128k assets/music/name.mp3`
+   makes that version; keep big originals in `music-originals/`, which is gitignored.
+2. Add one line to `MUSIC_TRACKS` at the top of `game.js`:
+   `{ file: 'name.mp3', title: 'Song Title', artist: 'Artist', loop: false, tool: 'Suno', plan: '…', termsUrl: '…' },`
+   (`loop: true` repeats that one track forever with a crossfade into itself, instead of moving on to the next).
+3. Add it to the Music section of `CREDITS.md`. The Credits screen lists every track by name once `tool`, `plan` and
+   `termsUrl` are filled in for all of them; until then it shows "Music: AI-generated".
+
+A track that fails to load is skipped (one warning in the console), and the game runs fine with an empty list.
 
 ## How it's built
 

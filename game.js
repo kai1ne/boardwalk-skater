@@ -11,6 +11,15 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createDirector } from './director.js';
 import { makeVehicle } from './vehicles.js';
+import { createAudio } from './audio.js';
+
+// background music, played from assets/music/ in a shuffled order that repeats forever. To add a track, drop the MP3 in
+// assets/music/ and add one line here. loop: true crossfades that track into itself instead of moving on. The Credits
+// screen lists the tracks once tool / plan / termsUrl are filled in (until then it says "Music: AI-generated").
+export const MUSIC_TRACKS = [
+  { file: 'la-it-aint-what-it-seems.mp3', title: "LA, It Ain't What It Seems", artist: 'tonefreshhh', loop: false, tool: 'NEEDS INFO', plan: 'NEEDS INFO', termsUrl: 'NEEDS INFO' },
+  { file: 'west-coast-ska-dub.mp3', title: 'West Coast Ska Dub', artist: 'tonefreshhh', loop: false, tool: 'NEEDS INFO', plan: 'NEEDS INFO', termsUrl: 'NEEDS INFO' },
+];
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -27,6 +36,7 @@ export function createGame(ctx) {
   const L = G.lanes, J = G.jump, H = G.hazards, SP = G.spawn, SC = G.score, TR = G.tricks, EN = G.energy, HP = G.health;
   const LANE_X = Array.from({ length: L.count }, (_, i) => (i - (L.count - 1) / 2) * L.width);
   const $ = (id) => document.getElementById(id);
+  const audio = createAudio({ tracks: MUSIC_TRACKS, cfg: G.audio });
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
     title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], lbNotes: [$('gLbNote'), $('gOverLbNote')], lbMsg: $('gLbMsg'), lbRetry: $('gLbRetry'), entryHint: $('gEntryHint'), newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
@@ -426,7 +436,7 @@ export function createGame(ctx) {
     if (st.mode !== 'playing') st.paused = false;
     else if (p) { st.paused = true; sk.held[-1] = sk.held[1] = false; sk.jumpHeld = false; if (sk.mode === 'charge') setMode('ground'); }
     else st.paused = false;
-    showScreens(); document.body.classList.toggle('frozen', st.paused);
+    showScreens(); document.body.classList.toggle('frozen', st.paused); audio.setPaused(st.paused);
   }
   function autoPause() { if (st.mode === 'playing' && !bot.on) setPaused(true); }
 
@@ -804,7 +814,10 @@ export function createGame(ctx) {
   }
   function release(a) { if (a === 'laneLeft') sk.held[-1] = false; else if (a === 'laneRight') sk.held[1] = false; else if (a === 'crouchJump') releaseJump(); }
   function keydown(e) {
-    const k = e.key;
+    const k = e.key; audio.unlock();   // the first key press starts the music (browsers need a user gesture first)
+    if (k === 'm' || k === 'M') { if (!e.repeat) popup(audio.toggleMute() ? 'SOUND OFF' : 'SOUND ON'); return true; }
+    if (k === 'n' || k === 'N') { if (!e.repeat) popup(audio.toggleMusic() ? 'MUSIC OFF' : 'MUSIC ON'); return true; }
+    if (k === '-' || k === '_' || k === '=' || k === '+') { popup(`MUSIC ${Math.round(audio.setMusicVolume(audio.prefs.musicVol + (k === '-' || k === '_' ? -0.05 : 0.05)) * 100)}%`); return true; }
     if (k === 'h' || k === 'H') { debug = !debug; return true; }
     if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
     if (k === 't' || k === 'T') { if (!e.repeat) dbgOn = !dbgOn; return true; }
@@ -818,11 +831,18 @@ export function createGame(ctx) {
   window.addEventListener('blur', autoPause);
   document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
 
+  // music credits: every track by name once its details are filled in, otherwise one general line
+  const musicDone = MUSIC_TRACKS.length && MUSIC_TRACKS.every((t) => ![t.tool, t.plan, t.termsUrl].includes('NEEDS INFO'));
+  $('gMusicCredits').textContent = '';
+  if (!MUSIC_TRACKS.length) $('gMusicCredits').textContent = 'None yet';
+  else if (!musicDone) $('gMusicCredits').textContent = 'Music: AI-generated';
+  else MUSIC_TRACKS.forEach((t, i) => { if (i) $('gMusicCredits').appendChild(document.createElement('br')); $('gMusicCredits').append(`${t.title} by ${t.artist} · AI-generated with ${t.tool}`); });
+
   renderBoard(); refreshBoard(); renderDiscoveries(); showScreens();
   return {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
-    st, sk, OBS, LANE_X, save, writeSave, refreshBoard, lb, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
+    st, sk, OBS, LANE_X, save, writeSave, refreshBoard, lb, director, bot, botReport, setAutopilot, start: startGame, setPaused, audio, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
 }
