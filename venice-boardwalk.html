@@ -84,6 +84,9 @@
   .card .hs li .r { width: 18px; text-align: right; opacity: .6; } .card .hs li .n { flex: 1; text-align: left; font-weight: bold; }
   .card .hs li .s { font-variant-numeric: tabular-nums; } .card .hs li.empty { opacity: .35; } .card .hs li.me { color: #ffd84a; }
   .card .disc { font-size: 12px; line-height: 1.5; margin-bottom: 12px; } .card .disc b { color: #ffd84a; letter-spacing: 1px; } .card .disc .q { opacity: .5; }
+  .card .lbnote { font-size: 11px; opacity: .65; margin-top: 4px; min-height: 13px; }
+  .card .lbmsg { display: none; font-size: 13px; color: #ffd84a; margin: -8px 0 4px; }
+  #gLbRetry { display: none; margin: 4px auto 14px; }
   .card .note { display: none; font-size: 11px; opacity: .7; margin-bottom: 10px; }
   .card .entry { display: none; margin-bottom: 16px; pointer-events: auto; }
   .card .entry input { width: 200px; padding: 8px 10px; border-radius: 6px; border: 2px solid #ffd84a; background: rgba(0,0,0,.35); color: #fff;
@@ -111,13 +114,14 @@
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
 <div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
   <div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div>
-  <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gScores"></ol></div>
+  <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gScores"></ol><div class="lbnote" id="gLbNote"></div></div>
   <div class="go">Press Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
 <div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.png" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
-  <div class="best">Best <span id="gOverBest">0</span></div>
-  <div class="entry" id="gEntry"><div class="nb">High score! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint">Letters and numbers, up to 10 · Enter to save</div></div>
-  <div class="hs"><div class="hsT">HIGH SCORES</div><ol id="gOverScores"></ol></div>
-  <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Scores can't be saved in this browser, so they last this session only</div>
+  <div class="best">Your best: <span id="gOverBest">0</span></div>
+  <div class="entry" id="gEntry"><div class="nb">Global top 5! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint" id="gEntryHint">3 to 10 letters or numbers · Enter to submit</div></div>
+  <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gOverScores"></ol><div class="lbnote" id="gOverLbNote"></div></div>
+  <div class="lbmsg" id="gLbMsg"></div><button class="btn" id="gLbRetry" tabindex="-1">Retry</button>
+  <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Your best and discovered tricks can't be saved in this browser</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
 <div id="gCredits" class="screen"><div class="card">
   <h1><img class="logo over cr" src="assets/ui/credits-logo.png" alt="Credits"></h1>
@@ -129,6 +133,7 @@
     <h3>Animation</h3><p>Universal Animation Library [Standard] by Quaternius, with animator Gonzalo Furnier<br>CC0 · <span class="u">quaternius.itch.io/universal-animation-library</span></p>
     <h3>Dogs</h3><p>Shiba Inu by Quaternius · CC0 · <span class="u">poly.pizza/m/y4wdQpg767</span><br>Husky by Quaternius · CC0 · <span class="u">poly.pizza/m/wcWiuEqwzq</span></p>
     <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
+    <h3>Global leaderboard</h3><p>Hosted on Cloudflare Workers and D1. Scores are stored online with a name, score and date only.</p>
     <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
     <h3>Made in code for this game</h3><p>Buildings, signs, murals, clothing, skateboards, bikes, cars, props, birds, sky and all other procedural art. All business names, tags and ads are invented.</p>
   </div>
@@ -193,7 +198,8 @@ const GAME = {
             discover: ['kickflip', 'heelflip', 'threeSixty', 'impossible'], bonus: 'hardflip',   // the game-over list; the bonus trick stays hidden until landed
             bail: { invuln: 1.2, flickerHz: 12 } },   // after a failed trick (damage = a cone hit): s of invincibility, skater flicker rate
   hints: { holdAfter: 60, airAfter: 3 },   // s of play with no jump before "Try holding Space"; jumps with no trick attempt before "Try ↑ or ↓ in the air"
-  save: { key: 'boardwalkSkater.save.v1', oldScores: 'vbSkaterScores', oldBest: 'vbSkaterBest', topN: 5, nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
+  leaderboard: { timeoutMs: 5000, cacheKey: 'boardwalkSkater.top5.v1' },   // the global top 5 (server URL: LEADERBOARD_URL in game.js)
+  save: { key: 'boardwalkSkater.save.v1', nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)

@@ -82,6 +82,14 @@ lettering, pavement decals (slab seams, hairline cracks, oil and tire stains, gu
 swirls, a painted X and painted road text), the US flag, and an invented state-style flag. All business names, tags
 and ads are invented. The police cars, police SUVs and lifeguard pickups (`vehicles.js`), breakdancers' cardboard and boombox, stand-up shop signs and dispensary leaf are procedural too, and the breakdance moves are posed in code. On-screen text uses Trebuchet MS, a system font that isn't shipped with the game.
 
+## Global leaderboard
+
+- Hosted on [Cloudflare Workers](https://workers.cloudflare.com) with a [Cloudflare D1](https://developers.cloudflare.com/d1/)
+  database, on the free plan, under Cloudflare's terms of service. Only a name, score, date and game version are stored
+  for each score (top 100 kept); rate limiting uses a salted, day-scoped hash of the client IP that expires after two hours.
+- [Wrangler](https://github.com/cloudflare/workers-sdk) (Cloudflare's deploy tool, MIT OR Apache-2.0) and
+  [Node.js](https://nodejs.org) (MIT) are used to build and deploy `server/`; neither ships with the game.
+
 ## Libraries
 
 - [three.js](https://threejs.org) r186 (0.186.1), MIT License, loaded from cdn.jsdelivr.net.

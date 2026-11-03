@@ -1,0 +1,12 @@
+// Cloudflare Worker config for the Boardwalk Skater leaderboard. No secrets here: they're set with `wrangler secret put`
+// (RUN_SECRET, IP_SALT, ADMIN_SECRET) and, for local dev only, in the gitignored .dev.vars.
+{
+  "name": "boardwalk-skater-leaderboard",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "boardwalk-leaderboard", "database_id": "9169c7a0-b10b-4234-acca-8c1606d9f725" }
+  ],
+  "triggers": { "crons": ["17 3 * * *"] }
+}

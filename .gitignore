@@ -3,3 +3,9 @@
 assets/characters/_src/
 # Google Street View screenshots: private reference only, never publish
 reference/
+# Leaderboard server: local secrets and build output (never commit these)
+server/.dev.vars
+server/.env
+server/.env.*
+server/node_modules/
+server/.wrangler/

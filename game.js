@@ -17,6 +17,9 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const rand = (a, b) => a + (b - a) * Math.random();
 function wpick(obj) { let s = 0; for (const k in obj) s += obj[k]; let r = Math.random() * s; for (const k in obj) { r -= obj[k]; if (r <= 0) return k; } return Object.keys(obj)[0]; }
+// the global leaderboard (server/ in this repo, a Cloudflare Worker). The address is public by nature.
+export const LEADERBOARD_URL = 'https://boardwalk-skater-leaderboard.boardwalk-skater-leaderboard.workers.dev';
+const GAME_VERSION = '4b';
 const TRICK_NAME = { kickflip: 'KICKFLIP', heelflip: 'HEELFLIP', hardflip: 'HARDFLIP', threeSixty: '360 FLIP', impossible: 'IMPOSSIBLE' };
 
 export function createGame(ctx) {
@@ -26,48 +29,97 @@ export function createGame(ctx) {
   const $ = (id) => document.getElementById(id);
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], lbNotes: [$('gLbNote'), $('gOverLbNote')], lbMsg: $('gLbMsg'), lbRetry: $('gLbRetry'), entryHint: $('gEntryHint'), newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
-  // saved game: top scores, tricks discovered and hints shown, in localStorage under a versioned key. Bad or missing data
-  // starts fresh; if storage is blocked everything lives in memory for the session and the game-over screen says so.
+  // saved game (this browser only): tricks discovered, hints shown, your best score and the last name entered, in
+  // localStorage under a versioned key. Bad or missing data starts fresh; if storage is blocked it all lives in memory for
+  // the session and the game-over screen says so. Scores saved by the old local top-5 table are kept as they were but
+  // never shown or uploaded.
   const SV = G.save, cleanName = (v) => String(v).replace(/[^A-Za-z0-9]/g, '').slice(0, SV.nameMax);
-  const save = { scores: [], tricks: {}, hints: {} }; let storageOK = true;
-  const cleanScores = (raw) => (Array.isArray(raw) ? raw : []).map((r) => ({ name: cleanName(r && r.name) || 'PLAYER', score: Math.floor(Number(r && r.score)) || 0 })).filter((r) => r.score > 0);
+  const save = { tricks: {}, hints: {}, best: 0, lastName: '' }; let storageOK = true;
   function writeSave() { try { localStorage.setItem(SV.key, JSON.stringify(save)); storageOK = true; } catch (e) { storageOK = false; } }
   (function readSave() {
     let raw = null;
     try { raw = localStorage.getItem(SV.key); } catch (e) { storageOK = false; return; }
     if (raw !== null) { let d = null; try { d = JSON.parse(raw); } catch (e) { /* corrupted: start fresh */ }
-      if (d && typeof d === 'object') { save.scores = cleanScores(d.scores);
+      if (d && typeof d === 'object') {
         for (const t of [...TR.discover, TR.bonus]) if (d.tricks && d.tricks[t] === true) save.tricks[t] = true;
-        for (const h of ['hold', 'air']) if (d.hints && d.hints[h] === true) save.hints[h] = true; }
-    } else {   // first run on this version: carry over the scores saved by the older keys
-      let old = []; try { old = cleanScores(JSON.parse(localStorage.getItem(SV.oldScores) || '[]')); } catch (e) { /* unreadable: nothing to carry over */ }
-      const b = Number(localStorage.getItem(SV.oldBest)) || 0; if (b && !old.length) old.push({ name: 'PLAYER', score: b });
-      save.scores = old; if (old.length) writeSave(); }
+        for (const h of ['hold', 'air']) if (d.hints && d.hints[h] === true) save.hints[h] = true;
+        if (Number.isInteger(d.best) && d.best > 0) save.best = d.best;
+        if (typeof d.lastName === 'string') save.lastName = cleanName(d.lastName);
+        if (Array.isArray(d.scores)) save.scores = d.scores; } }   // the old local table, left alone
     if (storageOK) try { localStorage.setItem(SV.key + '.test', '1'); localStorage.removeItem(SV.key + '.test'); } catch (e) { storageOK = false; }
-    save.scores.sort((a, b) => b.score - a.score); save.scores.length = Math.min(save.scores.length, SV.topN);
   })();
-  const scores = save.scores, HS_MAX = SV.topN;
-  let best = scores.length ? scores[0].score : 0, entering = false, lastEntry = null;
-  const qualifies = (n) => n > 0 && (scores.length < HS_MAX || n > scores[scores.length - 1].score);
-  function renderScores() {
-    for (const ol of ui.scores) { ol.textContent = ''; for (let i = 0; i < HS_MAX; i++) {
-      const r = scores[i], li = document.createElement('li');
-      if (!r) li.className = 'empty'; else if (r === lastEntry) li.className = 'me';
-      for (const [c, t] of [['r', i + 1], ['n', r ? r.name : '—'], ['s', r ? r.score.toLocaleString() : '']]) { const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp); }
-      ol.appendChild(li);
-    } }
-  }
-  ui.name.addEventListener('input', () => { const v = cleanName(ui.name.value); if (v !== ui.name.value) ui.name.value = v; });
-  ui.name.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter' && !e.repeat) {
-      lastEntry = { name: cleanName(ui.name.value) || 'PLAYER', score: st.score };
-      scores.push(lastEntry); scores.sort((a, b) => b.score - a.score); scores.length = Math.min(scores.length, HS_MAX); writeSave();
-      entering = false; ui.name.blur(); showScreens(); renderScores();
+  let entering = false;
+
+  // ---- global top 5: fetched on the title screen and at game over (5 s timeout, one retry); the last good board is
+  // cached and shown as "offline: last known" when the server can't be reached. Nothing is ever queued for later.
+  const LB = G.leaderboard, lb = { board: null, status: 'loading', token: null, tokenFailed: false, run: 0, phase: 'idle', tries: 0, mine: null };
+  try { const c = JSON.parse(localStorage.getItem(LB.cacheKey) || 'null'); if (c && Array.isArray(c.top5)) lb.cached = c.top5.filter((r) => r && typeof r.name === 'string' && Number.isInteger(r.score)).slice(0, 5); } catch (e) { /* no cache */ }
+  async function lbCall(path, body) {   // → the JSON on success, { error, status } for a refusal, null if unreachable
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ac = new AbortController(), timer = setTimeout(() => ac.abort(), LB.timeoutMs);
+      try {
+        const r = await fetch(LEADERBOARD_URL + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal } : { signal: ac.signal });
+        const d = await r.json().catch(() => ({})); clearTimeout(timer);
+        if (r.ok) return d;
+        if (r.status < 500) return { error: d.error || `http_${r.status}`, status: r.status };   // a refusal: retrying won't help
+      } catch (e) { clearTimeout(timer); }   // offline, timed out or blocked: try once more
     }
-  });
+    return null;
+  }
+  async function refreshBoard() {
+    lb.status = 'loading'; renderBoard();
+    const d = await lbCall('/top5');
+    if (d && Array.isArray(d.top5)) { lb.board = lb.cached = d.top5.slice(0, 5); lb.status = 'live'; try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, at: Date.now() })); } catch (e) { /* no cache */ } }
+    else { lb.board = lb.cached || null; lb.status = lb.board ? 'cached' : 'offline'; }
+    renderBoard(); return lb.status;
+  }
+  function renderBoard() {
+    const rows = lb.board || [], note = lb.status === 'loading' ? 'Loading…' : lb.status === 'cached' ? 'offline: last known' : lb.status === 'offline' ? 'Leaderboard offline' : '';
+    for (const ol of ui.scores) { ol.textContent = ''; ol.style.display = lb.status === 'offline' ? 'none' : '';
+      for (let i = 0; i < 5; i++) { const r = rows[i], li = document.createElement('li');
+        if (!r) li.className = 'empty'; else if (lb.mine && r.name === lb.mine.name && r.score === lb.mine.score) li.className = 'me';
+        for (const [c, t] of [['r', i + 1], ['n', r ? r.name : '—'], ['s', r ? r.score.toLocaleString() : '']]) { const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp); }
+        ol.appendChild(li); } }
+    for (const n of ui.lbNotes) n.textContent = note;
+  }
+  const qualifies = (n) => n > 0 && lb.board && (lb.board.length < 5 || n > lb.board[lb.board.length - 1].score);
+  function lbMessage(text, retry) { ui.lbMsg.textContent = text || ''; ui.lbMsg.style.display = text ? 'block' : 'none'; ui.lbRetry.style.display = retry ? 'block' : 'none'; }
+  // a run asks for a token in the background; the game never waits for it
+  function requestToken() {
+    const run = ++lb.run; lb.token = null; lb.tokenFailed = false; lb.phase = 'idle'; lb.mine = null;
+    if (bot.on) return;   // autopilot runs never post
+    lbCall('/start', {}).then((d) => { if (run !== lb.run) return; if (d && d.signature) lb.token = d; else lb.tokenFailed = true; });
+  }
+  // game over: refresh the board, then offer the name entry if the score makes the top 5
+  async function boardAtGameOver() {
+    const run = lb.run; lbMessage(''); await refreshBoard(); if (run !== lb.run || st.mode !== 'over') return;
+    if (bot.on || st.score <= 0) return;
+    if (!lb.token) { if (lb.status !== 'live' || lb.tokenFailed) lbMessage("Couldn't reach the leaderboard", true); return; }
+    if (!qualifies(st.score)) return;
+    lb.phase = 'asking'; lb.tries = 0; entering = true; ui.name.value = save.lastName || ''; ui.entryHint.textContent = '3 to 10 letters or numbers · Enter to submit'; showScreens();
+  }
+  async function submitScore() {
+    const run = lb.run, name = cleanName(ui.name.value);
+    if (!lb.token || lb.phase !== 'asking') return;
+    if (name.length < 3) { ui.entryHint.textContent = 'Names need 3 to 10 letters or numbers'; return; }
+    save.lastName = name; writeSave();
+    entering = false; ui.name.blur(); lb.phase = 'sending'; lbMessage('Submitting…'); showScreens();
+    const d = await lbCall('/score', { token: lb.token, name, score: st.score, distance: Math.round(st.dist * 3.28084), trickCounts: st.trickCounts, claimedDurationSec: Math.round(st.playT * 10) / 10, gameVersion: GAME_VERSION });
+    if (run !== lb.run) return;
+    if (d && d.ok) { lb.mine = d.qualified ? { name, score: st.score } : null; lb.board = lb.cached = d.top5.slice(0, 5); try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, at: Date.now() })); } catch (e) { /* no cache */ } lb.status = 'live'; lb.phase = 'done'; lbMessage(d.qualified ? '' : 'Just missed the top 5'); renderBoard(); return; }
+    if (d && (d.error === 'name_blocked' || d.error === 'name_length' || d.error === 'name_chars')) {   // the token isn't used up: pick another name
+      lb.phase = 'asking'; entering = true; lbMessage(''); ui.entryHint.textContent = d.error === 'name_blocked' ? 'Please choose a different name' : 'Names need 3 to 10 letters or numbers'; showScreens(); return; }
+    if (d && d.error === 'token_used') { lb.phase = 'done'; lbMessage(''); refreshBoard(); return; }   // it went through after all
+    if (d && d.error) { lb.phase = 'dropped'; lbMessage("Your score couldn't be verified, so it wasn't posted"); return; }
+    lb.tries++; lb.phase = lb.tries >= 2 ? 'dropped' : 'failed';
+    lbMessage(lb.tries >= 2 ? "Sorry, your score couldn't be posted" : "Couldn't post your score", lb.tries < 2);
+  }
+  ui.lbRetry.addEventListener('mousedown', (e) => e.preventDefault());
+  ui.lbRetry.addEventListener('click', () => { if (st.mode !== 'over') return; if (lb.phase === 'failed') submitScore(); else { lbMessage(''); refreshBoard(); } });
+  ui.name.addEventListener('input', () => { const v = cleanName(ui.name.value); if (v !== ui.name.value) ui.name.value = v; });
+  ui.name.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.repeat) submitScore(); });
   const st = { mode: 'title', paused: false, health: HP.max, energy: EN.max, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, titleT: 2.5, newBest: false, spawned: 0 };
   const startLane = Math.min(L.count - 1, Math.floor(L.count / 2));
   const sk = { lane: startLane, x: LANE_X[startLane], vx: 0, toX: 0, chT: -1, queue: [], recT: 0, recDir: 0, held: { '-1': false, '1': false },
@@ -348,7 +400,8 @@ export function createGame(ctx) {
     if (st.health <= 0) gameOver();
   }
   function startGame() {
-    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false, nextMile: 0 });
+    clearObstacles(); Object.assign(st, { mode: 'playing', paused: false, health: HP.max, energy: EN.max, sinceHit: 0, score: 0, dist: 0, playT: 0, combo: 0, comboT: 0, inv: 0, overT: 0, newBest: false, spawned: 0, nearMisses: 0, rampT: 0, noJumpT: 0, plainJumps: 0, jumped: false, nextMile: 0, trickCounts: {} });
+    entering = false; lbMessage(''); requestToken();
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
     if (!st.hasRun) { st.hasRun = true; if (ctx.onFirstRun) ctx.onFirstRun(); if (ctx.phaseNow) ctx.phaseNow(); }   // later runs carry on with the weather where it was
@@ -356,9 +409,10 @@ export function createGame(ctx) {
   }
   function gameOver() {
     st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false;
-    renderDiscoveries(); st.score = Math.floor(st.score); if (st.score > best) { best = st.score; st.newBest = true; }
-    entering = !bot.on && qualifies(st.score); ui.name.value = '';   // autopilot runs don't go on the list
-    ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
+    renderDiscoveries(); st.score = Math.floor(st.score); entering = false;
+    if (!bot.on && st.score > save.best) { save.best = st.score; st.newBest = true; writeSave(); }   // "Your best" is this browser's own record
+    ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = save.best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
+    boardAtGameOver();
   }
   function showScreens() {
     ui.title.classList.toggle('show', st.mode === 'title'); ui.over.classList.toggle('show', st.mode === 'over' && st.overT > G.overDelay);
@@ -451,7 +505,7 @@ export function createGame(ctx) {
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
-    let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); if (!bot.on && !save.tricks[t]) { save.tricks[t] = true; writeSave(); } }
+    let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); st.trickCounts[t] = (st.trickCounts[t] || 0) + 1; if (!bot.on && !save.tricks[t]) { save.tricks[t] = true; writeSave(); } }
     if (bot.on) bot.landed += sk.tricks.length;
     if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', 'Try ↑ or ↓ in the air');
     const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
@@ -764,11 +818,11 @@ export function createGame(ctx) {
   window.addEventListener('blur', autoPause);
   document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
 
-  renderScores(); renderDiscoveries(); showScreens();
+  renderBoard(); refreshBoard(); renderDiscoveries(); showScreens();
   return {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     // test hooks
-    st, sk, OBS, LANE_X, save, writeSave, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
+    st, sk, OBS, LANE_X, save, writeSave, refreshBoard, lb, director, bot, botReport, setAutopilot, start: startGame, setPaused, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };
 }
