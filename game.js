@@ -478,15 +478,17 @@ export function createGame(ctx) {
   }
   // ↑/↓ in the air start a trick (one per jump). The first press flips straight away; a second press within flipWindow
   // turns it into the double trick, carrying on from wherever the board has got to. On the ground, ↓ swaps which foot leads.
-  function pressFlip(dir) {
+  // win: the double-input window for this press (the keyboard uses flipWindow; touch passes GAME.touch.doubleTapWindow). The
+  // first press of a trick sets the window that its second press has to fall inside.
+  function pressFlip(dir, win = TR.flipWindow) {
     if (sk.mode === 'air') { const c = dir > 0 ? 'U' : 'D', tr = sk.trick;
-      if (!sk.attempted) { startFlip(c); audio.fx.flip(); } else if (tr && tr.keys.length === 1 && tr.t < TR.flipWindow) startFlip(tr.keys + c, S.pose.roll || 0); }
+      if (!sk.attempted) { startFlip(c, undefined, win); audio.fx.flip(); } else if (tr && tr.keys.length === 1 && tr.t < tr.win) startFlip(tr.keys + c, S.pose.roll || 0, tr.win); }
     else if (dir < 0 && (grounded() || sk.mode === 'charge')) sk.stance = -sk.stance;
   }
   // a trick lands only from a high enough jump with enough air left; otherwise the board starts to go and he bails on landing
-  function startFlip(keys, roll0) {
+  function startFlip(keys, roll0, win = TR.flipWindow) {
     const type = TR.inputs[keys], T = TR[type], ok = sk.jumpH >= T.minApex && sk.airDur - sk.airT >= T.dur + TR.airMargin;
-    sk.attempted = true; sk.trick = { type, keys, t: 0, dur: T.dur, fail: !ok, roll0 };
+    sk.attempted = true; sk.trick = { type, keys, t: 0, dur: T.dur, fail: !ok, roll0, win };
   }
   // the inputs that would land right now (the debug overlay and the autopilot read this)
   function availableFlips() { const left = sk.airDur - sk.airT; return Object.keys(TR.inputs).filter((k) => { const T = TR[TR.inputs[k]]; return sk.jumpH >= T.minApex && left >= T.dur + TR.airMargin; }); }
@@ -506,6 +508,7 @@ export function createGame(ctx) {
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
+  function cancelCharge() { sk.jumpHeld = false; if (sk.mode === 'charge') setMode('ground'); }   // a cancelled touch: let go of the crouch without jumping
   function pressLane(d) { if (st.mode !== 'over') sk.queue.push(d); }   // applied to the target lane next frame
   function slip() {
     if (sk.mode === 'slip' || sk.mode === 'crash') return;
@@ -516,7 +519,7 @@ export function createGame(ctx) {
     audio.fx.hit(type === 'cones'); audio.fx.stutter('stumble'); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
   }
   function land() {
-    sk.y = 0; sk.vy = 0;
+    sk.y = 0; sk.vy = 0; sk.landAt = performance.now();   // touch input compares finger-down times with this (landing buffer)
     if (sk.trick && !sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; }   // finished, still open for a second press
     if (sk.trick) { bail(); return; }   // a failed attempt, or still flipping
     setMode('land'); audio.fx.land(sk.jumpF);
@@ -562,7 +565,7 @@ export function createGame(ctx) {
         if (!sk.jumpHeld && sk.chargeT >= J.minCrouch) pop(); break;   // held: stays crouched until released
       case 'air':
         sk.airT += dt; sk.vy -= J.gravity * dt; sk.y += sk.vy * dt;
-        if (sk.trick) { const tr = sk.trick; tr.t += dt; if (!tr.fail && tr.t >= tr.dur && (tr.keys.length > 1 || tr.t >= TR.flipWindow)) { sk.tricks.push(tr.type); sk.trick = null; } }
+        if (sk.trick) { const tr = sk.trick; tr.t += dt; if (!tr.fail && tr.t >= tr.dur && (tr.keys.length > 1 || tr.t >= tr.win)) { sk.tricks.push(tr.type); sk.trick = null; } }
         if (st.mode === 'title' && !sk.attempted && sk.airT > 0.02) { const a = availableFlips(); sk.attempted = !a.length; if (a.length) for (const c of a[Math.floor(Math.random() * a.length)]) pressFlip(c === 'U' ? 1 : -1); }   // show off on the title screen
         if (sk.y <= 0) land();
         break;
@@ -745,7 +748,7 @@ export function createGame(ctx) {
     ui.dbg.style.display = dbgOn ? 'block' : 'none'; if (!dbgOn) return;
     const air = sk.mode === 'air', apex = sk.mode === 'charge' ? apexIfReleased() : air ? sk.jumpH : 0, left = air ? sk.airDur - sk.airT : 0;
     const fits = [...TR.discover, TR.bonus].filter((t) => apex >= TR[t].minApex).map((t) => TRICK_NAME[t]);
-    const tr = sk.trick, win = tr ? `${tr.fail ? 'failing' : 'flipping'} ${TRICK_NAME[tr.type]}${tr.keys.length === 1 && tr.t < TR.flipWindow ? `, second press ${(TR.flipWindow - tr.t).toFixed(2)} s` : ''}` : sk.attempted ? 'used' : 'open';
+    const tr = sk.trick, win = tr ? `${tr.fail ? 'failing' : 'flipping'} ${TRICK_NAME[tr.type]}${tr.keys.length === 1 && tr.t < tr.win ? `, second press ${(tr.win - tr.t).toFixed(2)} s` : ''}` : sk.attempted ? 'used' : 'open';
     ui.dbg.textContent = `state ${sk.mode}\ncharge ${(sk.mode === 'charge' ? chargeFrac() : 0).toFixed(2)}\ncrouch ${(S.pose.crouch || 0).toFixed(2)}\napex ${apex.toFixed(2)} m\ntricks ${fits.join(', ') || 'none'}\nflip window ${win}\nair left ${left.toFixed(2)} s`;
   }
   function update(dt) {
@@ -815,7 +818,8 @@ export function createGame(ctx) {
   $('gCreditsBtn').addEventListener('click', () => { if (st.mode === 'title') showCredits(true); });
   $('gCreditsClose').addEventListener('click', () => showCredits(false));
   for (const b of ['gCreditsBtn', 'gCreditsClose']) $(b).addEventListener('mousedown', (e) => e.preventDefault());   // a click never leaves keyboard focus on the button
-  function press(a) {   // returns true if the action did something on this screen
+  // opt.win: the double-input window for a flip (touch sends its own); the keyboard leaves it out
+  function press(a, opt) {   // returns true if the action did something on this screen
     if (creditsOpen) { if (a === 'pause') { showCredits(false); audio.fx.click(); } else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
     if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); audio.fx.click(); return true; } return false; }
     if (st.mode === 'title') { if (a === 'confirm') { audio.fx.click(); startGame(); return true; } if (a === 'credits') { audio.fx.click(); showCredits(true); return true; } return false; }
@@ -825,8 +829,8 @@ export function createGame(ctx) {
       case 'laneLeft': sk.held[-1] = true; pressLane(-1); return true;
       case 'laneRight': sk.held[1] = true; pressLane(1); return true;
       case 'crouchJump': pressJump(); return true;
-      case 'flipUp': pressFlip(1); return true;
-      case 'flipDown': pressFlip(-1); return true;
+      case 'flipUp': pressFlip(1, opt && opt.win); return true;
+      case 'flipDown': pressFlip(-1, opt && opt.win); return true;
     }
     return false;
   }
@@ -861,6 +865,8 @@ export function createGame(ctx) {
   return {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
+    get credits() { return creditsOpen; }, get entering() { return entering; },
+    get airborne() { return sk.mode === 'air'; }, get landAt() { return sk.landAt || 0; }, cancelCharge,
     // test hooks
     st, sk, OBS, LANE_X, save, writeSave, refreshBoard, lb, director, bot, botReport, setAutopilot, start: startGame, setPaused, audio, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
   };

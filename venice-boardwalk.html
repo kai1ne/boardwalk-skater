@@ -118,6 +118,27 @@
   .card .load .bar i { display: block; height: 100%; width: 0; background: #ffd84a; transition: width .25s; }
   .booting .card .load { display: block; } .booting .card .go, .booting #gCreditsBtn { display: none; }
   #hud, #ghud, #gBot, .screen, .card input { font-weight: bold; text-transform: uppercase; }   /* all UI text: bold Trebuchet MS in capitals */
+  /* ---- touch (touch.js): nothing here shows until the first touch puts .touch on the body; .tplay = a run is live */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  html, body, canvas, #touchLayer { touch-action: none; }
+  .card .roll { touch-action: pan-y; } .card input { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+  #touchLayer { position: fixed; inset: 0; }
+  #tSafe { position: fixed; left: 0; top: 0; visibility: hidden; pointer-events: none;
+           padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #tDpad { position: fixed; display: none; pointer-events: none; z-index: 5; }
+  #tDpad svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  #tDpad .ring { fill: rgba(10,12,16,.5); stroke: #111; stroke-width: 3; }
+  #tDpad .arr path { fill: #fff; stroke: #111; stroke-width: 3.5; stroke-linejoin: round; paint-order: stroke; transition: fill .06s; }
+  #tDpad .arr.on path { fill: #ffd84a; filter: drop-shadow(0 0 3px rgba(255,216,74,.8)); }
+  #tDpad .hub { fill: rgba(255,255,255,.22); stroke: #111; stroke-width: 2; }
+  #tPause { position: fixed; display: none; z-index: 6; padding: 0; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid #ffd84a;
+            background: rgba(0,0,0,.35); color: #ffd84a; cursor: pointer; touch-action: manipulation; }
+  #tPause svg { width: 52%; height: 52%; fill: currentColor; }
+  body.tplay #tDpad { display: block; } body.tplay #tPause { display: flex; }
+  body.touch #ghud .tr { right: calc(18px + var(--tPause, 0px)); } body.touch.lefty #ghud .tl { left: calc(18px + var(--tPause, 0px)); }
+  .tonly { display: none; } body.touch .tonly { display: block; } body.touch .kbonly { display: none; }
+  .card .opts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; } .card .opts .btn { margin: 0; }
+  body.touch .card .btn { min-height: 44px; min-width: 44px; padding: 10px 20px; touch-action: manipulation; }
 </style>
 <script type="importmap">
 {
@@ -169,7 +190,9 @@
   </div>
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
-<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
+<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="kbonly"><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div>
+  <div class="tonly"><button class="btn" id="tResume" type="button">Resume</button>
+    <div class="hsT" style="margin-top:16px">CONTROLS</div><div class="opts"><button class="btn" id="tSide" type="button">D-pad: left</button><button class="btn" id="tSize" type="button">Size: medium</button><button class="btn" id="tBuf" type="button">Edges: assist</button></div></div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -200,6 +223,29 @@ const GAME = {
   // keyboard → named actions (game.js press/release). Touch controls can call the same actions later.
   input: { crouchJump: [' '], laneLeft: ['ArrowLeft', 'a', 'A'], laneRight: ['ArrowRight', 'd', 'D'], flipUp: ['ArrowUp'], flipDown: ['ArrowDown'],
            pause: ['Escape'], confirm: ['Enter', ' '], credits: ['c', 'C'] },
+  // touch controls (touch.js): the same named actions from a D-pad (left thumb) and the game surface (right thumb). Sizes
+  // are shares of the viewport so they fit any screen; the zones are rings around the D-pad centre, as shares of its diameter
+  touch: { saveKey: 'boardwalkSkater.touch.v1',   // Controls settings (side, D-pad size, buffer mode) in this browser
+           leftHanded: false,               // default side: false = D-pad on the left
+           size: 'medium', sizes: { small: 0.18, medium: 0.22, large: 0.27 },   // D-pad diameter as a share of the viewport height
+           minSize: 96,                    // px floor for the D-pad diameter on very short screens
+           margin: 0.035,                  // gap from the screen edges (share of the shorter side), on top of the safe-area insets
+           opacity: 0.5,
+           hitPadding: 0.2,                // zone 1: the hit area reaches this far past the drawn D-pad
+           bufferPadding: 0.4,             // zone 2: the buffer ring beyond that (never jumps or trick-taps)
+           bufferMode: 'assist',           // 'assist': a buffer touch steers by its angle to the centre; 'ignore': it does nothing
+           guardPadding: 0.3,              // re-landing guard ring beyond the buffer ring, active for postReleaseGuard ms after a D-pad finger lifts
+           postReleaseGuard: 250,
+           deadZone: 0.25, deadZoneHysteresis: 0.2,   // centre dead zone (share of the D-pad radius); a held direction lets go only 20% further in
+           hysteresis: 12,                 // degrees past a direction's 45° edge before the next direction takes over
+           diagonalMode: 'nearest', diagonalBand: 10,   // diagonals: 'nearest' axis, or prefer 'horizontal' / 'vertical' within diagonalBand° of 45°
+           repeat: false, repeatDelay: 250, repeatInterval: 180,   // the keyboard doesn't repeat held arrows (holding slides across lanes), so neither does the D-pad
+           doubleTapWindow: 0.25,          // s: second input for the 360 / impossible / hardflip from touch (the keyboard uses tricks.flipWindow)
+           trickSplitY: 0.5,               // air taps above this share of the screen height are flipUp (kickflip), below it flipDown (heelflip)
+           airTrickOn: 'down',             // trick taps fire on touch 'down' or on lift ('up')
+           landingBuffer: 80,              // ms: a finger down this long before the landing frame (but handled after it) is still a consumed trick tap
+           tapMaxMs: 600, tapSlop: 0.05,   // title screen: a tap (not a drag) starts a run
+           pauseSize: 0.11, pauseMin: 44, pauseMargin: 0.03 },   // pause button (share of the shorter side, px floor) and its edge gap
   lanes: { count: 4, width: 2.1,          // 4 lanes across the 9 m boardwalk, centres at ±1.05 / ±3.15 m
            carveRatio: 0.3,                // sideways speed of a lane carve as a share of forward speed (0.3 → 0.9 s per lane at 27 km/h, 0.45 s at 58 km/h)
            carveMin: 0.4, carveMax: 1.2,   // s limits on one carve
@@ -466,8 +512,8 @@ const TX = {
   sand: pbr('sand_03', { ao: false, col: '#c9b796' }),   // coast_sand_04 also downloaded; sand_03 matched Venice's pale trampled sand better
 };
 // the character files and the game code download alongside the textures (both modules are fetched now, used in loadMgr.onLoad)
-const charsModule = import('./characters.js'), gameModule = import('./game.js');
-gameModule.catch(() => {});   // a failure is reported where it's awaited
+const charsModule = import('./characters.js'), gameModule = import('./game.js'), touchModule = import('./touch.js');
+gameModule.catch(() => {}); touchModule.catch(() => {});   // a failure is reported where it's awaited
 charsModule.then((m) => { BOOT.charsN = m.CHARACTER_FILES; m.preloadCharacters(() => { BOOT.chars++; bootProgress(); }).catch(() => {}); }).catch(() => {});
 
 function canvasTex(c, { srgb = true, repeat = false, flip = true } = {}) {
@@ -2071,6 +2117,7 @@ window.__vb = {
   chase() { camMode = 'chase'; },
   stop(v = true) { S.moving = !v; },
   get game() { return game; },
+  get touch() { return touch; },
   setLineup, LINE, setFit, fit: FITV,
   findKind(kind, from = 2) { for (let i = from; i < from + 200; i++) if (kindFor(i) === kind) return i; return -1; },
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
@@ -2113,7 +2160,7 @@ function step(dt, t) {
   if (!__vb.noRender) { renderer.info.reset(); composer.render(dt); }   // noRender: headless simulation for bot tests
   updateHud(dt);
 }
-let chars = null, game = null;
+let chars = null, game = null, touch = null;
 loadMgr.onLoad = async () => {
   if (started) return; started = true;
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
@@ -2123,6 +2170,8 @@ loadMgr.onLoad = async () => {
   BOOT.chars = BOOT.charsN; BOOT.build = 0.8; bootProgress('Opening the boardwalk…');
   try { const { createGame } = await gameModule; game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, forDrumCircles, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
   catch (err) { console.error('[game] failed to start:', err); }
+  try { if (game) { const { createTouch } = await touchModule; touch = createTouch({ game, cfg: GAME.touch }); } }
+  catch (err) { console.error('[touch] controls failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);
   frame();
