@@ -22,6 +22,29 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
+// the player's white studio headphones (procedural; closed-back over-ear style, no logos or cable). Every length is in
+// metres in the Head bone's own space (x = his left, y = up from the base of the skull, z = forward), measured from the
+// skater's head: ears at x ±0.0855, y 0.101, z −0.007; head 0.18 m wide; Hair_SimpleParted reaches x ±0.09 and up to y 0.241.
+export const HEADPHONES = {
+  color: { shell: '#efeeea', pad: '#b7b9bc', metal: '#c9ccd0' },   // off-white shell (~0.86 linear albedo), light grey pads, brushed silver
+  shell: { roughness: 0.35, metalness: 0 },
+  pad: { roughness: 0.82, metalness: 0 },                       // ear pads and the headband cushion: soft-touch
+  metal: { roughness: 0.4, metalness: 0.9 },                    // sliders, yokes and pivots
+  ear: { y: 0.101, z: -0.007 },                                 // cup centres sit on the ears
+  cup: { halfHeight: 0.049, halfLength: 0.041,                  // slightly oval: 9.8 cm tall, 8.2 cm front to back
+         depth: 0.027, edge: 0.009,                             // shell depth and the rounding of its outer edge
+         padInner: 0.094,                                       // |x| of the pad's face against the head (hair ends at 0.090)
+         padTube: 0.0105, padFlatten: 0.85,                     // ear-pad cushion thickness and how much it's squashed against the head
+         panel: 0.62, panelRaise: 0.0025 },                     // raised oval panel on the outer face: its size (share of the cup) and height
+  yoke: { tube: 0.0032, gap: 0.009, pivot: 0.0055,             // fork wire thickness, clearance around the cup, pivot hub radius
+          at: 0.45 },                                           // where across the cup's depth the fork and pivots sit (0 = pad side, 1 = outer face)
+  slider: { length: 0.05, width: 0.011, thick: 0.0035 },       // the bare metal adjustment strip between fork and band
+  band: { clearance: 0.004,                                     // gap between the cushion and the top of the hair
+          thick: 0.011, width: 0.032,                           // flattened cross-section: radial thickness and front-to-back width
+          overhang: 0.004 },                                    // how far the band's sides bow out past the sliders
+  cushion: { thick: 0.011, width: 0.026, span: 0.72 },          // padded strip under the band, over the middle `span` of its arc
+};
+
 // deterministic RNG so the crowd looks the same on every load
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
   t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -634,11 +657,57 @@ export async function createCharacters(ctx) {
     board.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     return { board, flip, deck, wheels, g: board, agent: null, inScene: false };
   }
+  // ---------------- the player's headphones (HEADPHONES at the top of this file) ----------------
+  // Three meshes (shell, pads, metal) parented to the Head bone, built in its space, so they follow every clip and
+  // procedural head pose exactly. The Head bone's world scale is 1, and the measured positions come from the bind pose
+  // re-expressed in Head space (the same way the hair is placed), so no rest-pose or scale correction is needed.
+  function makeHeadphones(H = HEADPHONES) {
+    const C = H.cup, Y = H.yoke, SL = H.slider, BD = H.band, CU = H.cushion, hairTop = 0.2413;
+    const parts = { shell: [], pad: [], metal: [] };
+    const cupX = C.padInner + (0.55 + C.padFlatten) * C.padTube;   // cup origin (inner rim of the shell) so the pad's face lands at padInner
+    const forkX = cupX + C.depth * Y.at, forkRz = C.halfLength + Y.gap, forkRy = C.halfHeight + Y.gap;
+    const sliderTop = H.ear.y + forkRy + SL.length;
+    for (const s of [-1, 1]) {
+      // one cup, built around +y (its axis) with h = 0 at the shell's inner rim, then turned to face sideways
+      const R = C.halfLength, D = C.depth, e = C.edge, k = C.halfHeight / C.halfLength, prof = [new THREE.Vector2(R * 0.86, 0), new THREE.Vector2(R, 0.004), new THREE.Vector2(R, D - e)];
+      for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; prof.push(new THREE.Vector2(R - e + e * Math.cos(a), D - e + e * Math.sin(a))); }
+      prof.push(new THREE.Vector2(0, D));
+      const local = (g) => g.scale(k, 1, 1).rotateZ(-s * Math.PI / 2).translate(s * cupX, H.ear.y, H.ear.z);
+      parts.shell.push(local(new THREE.LatheGeometry(prof, 36)));
+      parts.shell.push(local(new THREE.CylinderGeometry(R * C.panel, R * C.panel, C.panelRaise * 2, 32).translate(0, D, 0)));   // raised panel
+      parts.metal.push(local(new THREE.TorusGeometry(R * (C.panel + 0.05), 0.0014, 6, 40).rotateX(Math.PI / 2).translate(0, D + 0.0008, 0)));   // thin trim ring round it
+      parts.pad.push(local(new THREE.TorusGeometry(R * 0.8, C.padTube, 10, 40).rotateX(Math.PI / 2).scale(1, C.padFlatten, 1).translate(0, -0.55 * C.padTube, 0)));   // ear pad
+      parts.pad.push(local(new THREE.CircleGeometry(R * 0.8, 32).rotateX(Math.PI / 2).translate(0, -0.002, 0)));   // cloth inside the pad
+      // yoke: a half-ring fork over the cup from the back pivot to the front one, then the slider up to the band
+      parts.metal.push(new THREE.TorusGeometry(forkRz, Y.tube, 6, 32, Math.PI).rotateY(Math.PI / 2).scale(1, forkRy / forkRz, 1).translate(s * forkX, H.ear.y, H.ear.z));
+      for (const f of [-1, 1]) parts.metal.push(new THREE.CylinderGeometry(Y.pivot, Y.pivot, 0.01, 12).rotateZ(Math.PI / 2).translate(s * (forkX - 0.002), H.ear.y, H.ear.z + f * forkRz));
+      parts.metal.push(new THREE.BoxGeometry(SL.thick, SL.length + 0.004, SL.width).translate(s * forkX, H.ear.y + forkRy + SL.length / 2, H.ear.z));
+      parts.shell.push(new THREE.BoxGeometry(0.011, 0.013, BD.width * 0.75).translate(s * forkX, H.ear.y + forkRy + 0.004, H.ear.z));   // hinge block on top of the fork
+    }
+    // headband: an elliptical arc through both slider tops, its top resting `clearance` above the hair on the cushion
+    const top = hairTop + BD.clearance + CU.thick + BD.thick / 2, ax = forkX + BD.overhang, pe = Math.asin(forkX / ax);
+    const ay = (top - sliderTop) / (1 - Math.cos(pe)), yc = top - ay;
+    class Arc extends THREE.Curve {
+      constructor(rx, ry, span) { super(); this.rx = rx; this.ry = ry; this.span = span; }
+      getPoint(t, out = new THREE.Vector3()) { const p = (t * 2 - 1) * this.span; return out.set(this.rx * Math.sin(p), yc + this.ry * Math.cos(p), H.ear.z); }
+    }
+    const flat = (g, w, th) => g.scale(1, 1, w / th);   // round tube → flattened band (wide front to back)
+    parts.shell.push(flat(new THREE.TubeGeometry(new Arc(ax, ay, pe), 48, BD.thick / 2, 10), BD.width, BD.thick).translate(0, 0, H.ear.z * (1 - BD.width / BD.thick)));
+    const inset = (BD.thick + CU.thick) / 2;
+    parts.pad.push(flat(new THREE.TubeGeometry(new Arc(ax - inset, ay - inset, pe * CU.span), 40, CU.thick / 2, 10), CU.width, CU.thick).translate(0, 0, H.ear.z * (1 - CU.width / CU.thick)));
+    const mat = (c, m) => new THREE.MeshStandardMaterial({ color: c, roughness: m.roughness, metalness: m.metalness });
+    const g = new THREE.Group(); g.name = 'headphones';
+    for (const [k, list] of Object.entries(parts)) { const m = new THREE.Mesh(mergeGeometries(list), mat(H.color[k], H[k])); m.name = 'headphones-' + k; m.castShadow = true; m.receiveShadow = true; g.add(m); list.forEach((x) => x.dispose()); }
+    g.userData.fit = { cupX, forkX, ax, ay, yc, top, inset };
+    return g;
+  }
+
   const sk = new Rig('M'); sk.setApp(skaterApp); sk.setShadow(true);
   // the player: the everyday build's reduced mesh (light, ~5k triangles) and a softer skin normal map
   sk.body.geometry = skaterApp.variant.geoLow;
   skaterApp.mat.normalScale.set(0.4, 0.4); skaterApp.mat.roughness = 1;
   if (sk.brows) sk.brows.visible = false;   // brows/eye cards add little at chase-camera distance
+  sk.headphones = makeHeadphones(); sk.bones.Head.add(sk.headphones);
   const mainBoard = makeBoard(0x1d1d1f), board = mainBoard.board, flip = mainBoard.flip; skater.add(board); skater.add(sk.wrap);
   sk.wheels = mainBoard.wheels; sk.deck = mainBoard.deck; sk.snap(CLIP.idle, 0, 0.6);
   const SKT = { lean: 0, prevX: S.x, vx: 0, wheelA: 0, stanceA: Math.PI / 2 };
