@@ -177,6 +177,8 @@
   body.kbd #gOver { top: var(--vvTop, 0px); height: var(--vvH, 100%); bottom: auto; align-items: flex-start; padding-top: 6px; }
   body.kbd #gOver .card > :not(.entry) { display: none !important; } body.kbd #gOver .card { padding: 12px 18px; }
   /* portrait on a phone: everything waits behind "Rotate your phone" */
+  #gGl { display: none; position: fixed; inset: 0; z-index: 40; align-items: center; justify-content: center; background: rgba(0,0,0,.55); color: #fff; font-family: "Trebuchet MS", "Lucida Grande", sans-serif; text-transform: uppercase; }
+  #gGl.show { display: flex; } #gGl .card { pointer-events: auto; } #gGl .btn { display: inline-block; margin: 8px 6px 0; pointer-events: auto; }
   #tRotate { display: none; position: fixed; inset: 0; z-index: 50; background: #0c1016; color: #ffd84a; align-items: center; justify-content: center; text-align: center;
              font: bold 20px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-transform: uppercase; touch-action: none; }
   #tRotate svg { width: 96px; height: 96px; fill: none; stroke: #ffd84a; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 16px; animation: tRot 2.2s ease-in-out infinite; }
@@ -243,7 +245,8 @@
 </div></div>
 <div id="gPause" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="kbonly"><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div>
   <div class="tonly"><div class="opts"><button class="btn big2" id="tResume" type="button">Resume</button><button class="btn" id="tRestart" type="button">Restart</button><button class="btn tfs" id="tFull2" type="button">Fullscreen</button></div>
-    <div class="hsT" style="margin-top:16px">CONTROLS</div><div class="opts"><button class="btn" id="tSide" type="button">D-pad: left</button><button class="btn" id="tSize" type="button">Size: medium</button><button class="btn" id="tBuf" type="button">Edges: assist</button></div></div></div></div>
+    <div class="hsT" style="margin-top:16px">CONTROLS</div><div class="opts"><button class="btn" id="tSide" type="button">D-pad: left</button><button class="btn" id="tSize" type="button">Size: medium</button><button class="btn" id="tBuf" type="button">Edges: assist</button><button class="btn" id="tVib" type="button" style="display:none">Vibration: off</button></div>
+    <div class="hsT" style="margin-top:16px">GRAPHICS</div><div class="opts"><button class="btn" id="tGfx" type="button">Graphics: auto</button><button class="btn" id="tCap" type="button">30 FPS: off</button></div><div class="note" id="tGfxNote">Draw distance and crowd size change the next time the game opens</div></div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -256,18 +259,40 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeVehicle } from './vehicles.js';
 
 // =====================================================================================
-// CONFIG — phase 1 is desktop only. A mobile profile slots in here later (lower shadow
-// map, no GTAO, fewer chunks/instances, touch input) without touching the systems below.
+// CONFIG — quality tiers. Desktop runs "high" (the original look). A touch device (window.__mobile, set from Pointer
+// Events and the screen size at the top of <body>) starts on "medium". Pause menu → Graphics picks Auto / High / Medium /
+// Low (saved); ?quality=high|medium|low forces one. The pixel ratio, shadows, AO, bloom, grain, god rays, MSAA and the
+// environment map change live; draw distance (chunks) and the crowd (rigs, walkers, animated cap) apply on the next load.
 // =====================================================================================
-const PLATFORM = 'desktop';
+const PLATFORM = window.__mobile ? 'mobile' : 'desktop';
 const QUALITY = {
-  desktop: { pixelRatioMax: 2, startPixelRatio: 1.25, adaptive: true, msaa: 4, shadowMapSize: 4096, shadowExtent: 48, gtao: true, gtaoScale: 0.5,
-             bloom: true, chunks: 10, people: 280, envSize: 128,
-             // rigged crowd: skinned rigs per body, how many animate every frame, LOD radii (m)
-             characters: { rigsPerSex: 24, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260, cyclists: 10, dogs: 6,
-                           lodNear: 12, lodFar: 13.5, lodReduce: 0.6 } },   // full body mesh within 12 m, reduced (60% fewer vertices) beyond 13.5 m
+  high: { pixelRatioMax: 2, startPixelRatio: 1.25, adaptive: true, msaa: 4, shadowMapSize: 4096, shadowExtent: 48, gtao: true, gtaoScale: 0.5,
+          bloom: true, grain: 0.035, godrays: true, chunks: 10, people: 280, envSize: 128, aniso: 64,   // aniso: cap on the GPU's max anisotropy (64 = no cap)
+          // rigged crowd: skinned rigs per body, how many animate every frame, LOD radii (m)
+          characters: { rigsPerSex: 24, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260, cyclists: 10, dogs: 6,
+                        lodNear: 12, lodFar: 13.5, lodReduce: 0.6 } },   // full body mesh within 12 m, reduced (60% fewer vertices) beyond 13.5 m
+  medium: { pixelRatioMax: 1.5, startPixelRatio: 1.25, adaptive: true, msaa: 2, shadowMapSize: 1024, shadowExtent: 32, gtao: false, gtaoScale: 0.5,
+          bloom: false, grain: 0.02, godrays: true, chunks: 8, people: 160, envSize: 64, aniso: 4,
+          characters: { rigsPerSex: 16, nearCount: 12, rFull: 30, rRig: 60, rImp: 180, shadowDist: 18, midEvery: 3, walkers: 160, cyclists: 6, dogs: 4,
+                        lodNear: 10, lodFar: 11.5, lodReduce: 0.6 } },
+  low: { pixelRatioMax: 1.25, startPixelRatio: 1, adaptive: true, msaa: 0, shadowMapSize: 0, shadowExtent: 32, gtao: false, gtaoScale: 0.5,
+          bloom: false, grain: 0, godrays: false, chunks: 6, people: 100, envSize: 32, aniso: 2,
+          characters: { rigsPerSex: 12, nearCount: 8, rFull: 24, rRig: 45, rImp: 140, shadowDist: 0, midEvery: 4, walkers: 100, cyclists: 4, dogs: 3,
+                        lodNear: 8, lodFar: 9.5, lodReduce: 0.6 } },
 };
-const Q = QUALITY[PLATFORM];
+const TIERS = ['high', 'medium', 'low'];
+// adaptive (touch devices on Auto): below minFps for `seconds` of play → one tier down, never up during a run. The tier
+// it lands on is remembered for the next load (picking Auto again in the menu starts over from the platform default)
+const GFX = { saveKey: 'boardwalkSkater.graphics.v1', adaptive: { minFps: 45, seconds: 3 }, fpsCap: 30 };
+const gfxPrefs = { mode: 'auto', autoTier: null, cap30: false };
+try { const d = JSON.parse(localStorage.getItem(GFX.saveKey) || '{}'); if (d.mode === 'auto' || TIERS.includes(d.mode)) gfxPrefs.mode = d.mode;
+  if (TIERS.includes(d.autoTier)) gfxPrefs.autoTier = d.autoTier; gfxPrefs.cap30 = d.cap30 === true; } catch (e) { /* defaults */ }
+const saveGfx = () => { try { localStorage.setItem(GFX.saveKey, JSON.stringify(gfxPrefs)); } catch (e) { /* this visit only */ } };
+const urlQuality = new URLSearchParams(location.search).get('quality');
+const autoTier = () => (PLATFORM === 'mobile' ? gfxPrefs.autoTier || 'medium' : 'high');
+let tierName = TIERS.includes(urlQuality) ? urlQuality : gfxPrefs.mode === 'auto' ? autoTier() : gfxPrefs.mode;
+const Q = structuredClone(QUALITY[tierName]);   // what this load was built with (the live parts are changed in place by setTier)
+const LOAD_TIER = tierName;
 
 // ---- GAME: every gameplay tuning value (phase 2) -------------------------------------------
 const GAME = {
@@ -299,7 +324,8 @@ const GAME = {
            pauseSize: 0.11, pauseMin: 44, pauseMargin: 0.03,   // pause button (share of the shorter side, px floor) and its edge gap
            uiRef: 560, uiMin: 0.6,         // mobile HUD scale = shorter screen side / uiRef px, at least uiMin
            cardMin: 0.4,                   // smallest zoom a menu card gets to fit the screen
-           keyboardShare: 0.85 },          // the name entry moves up when the visible height drops below this share (on-screen keyboard)
+           keyboardShare: 0.85,
+           haptics: false, vibrate: { land: 15, hit: 40, bail: 60 } },   // vibration on landings / hits / bails, ms (Android only; off until switched on in Controls)          // the name entry moves up when the visible height drops below this share (on-screen keyboard)
   lanes: { count: 4, width: 2.1,          // 4 lanes across the 9 m boardwalk, centres at ±1.05 / ±3.15 m
            carveRatio: 0.3,                // sideways speed of a lane carve as a share of forward speed (0.3 → 0.9 s per lane at 27 km/h, 0.45 s at 58 km/h)
            carveMin: 0.4, carveMax: 1.2,   // s limits on one carve
@@ -331,6 +357,7 @@ const GAME = {
   leaderboard: { timeoutMs: 5000, cacheKey: 'boardwalkSkater.top5.v1' },   // the global top 5 (server URL: LEADERBOARD_URL in game.js)
   save: { key: 'boardwalkSkater.save.v1', nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
   audio: { folder: 'assets/music/', saveKey: 'boardwalkSkater.audio.v1',   // tracks: MUSIC_TRACKS at the top of game.js
+           session: null,                  // iOS Safari 16.4+: 'playback' plays through the silent switch; null leaves it to the system (silent switch mutes)
            musicVolume: 0.35,              // default music volume (- / = change it in 5% steps; N mutes the music, M everything)
            crossfade: 3,                   // s the next track overlaps the end of the current one
            pauseFade: 0.25, resumeFade: 0.4,   // s fades when the game pauses / resumes
@@ -468,7 +495,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;   // r186: PCFSoftShadowMap was removed; PCF + shadow.radius gives soft Vogel-disk filtering
 document.body.appendChild(renderer.domElement);
-const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
+const MAX_ANISO = Math.min(renderer.capabilities.getMaxAnisotropy(), Q.aniso);
 renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
@@ -1785,8 +1812,8 @@ let envRT = null;
 function updateEnv() { const rt = pmrem.fromScene(envScene, 0.02, 0.1, 200, { size: Q.envSize }); scene.environment = rt.texture; if (envRT) envRT.dispose(); envRT = rt; }
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0x888888, 1); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffffff, 3); sun.castShadow = true;
-sun.shadow.mapSize.set(Q.shadowMapSize, Q.shadowMapSize);
+const sun = new THREE.DirectionalLight(0xffffff, 3); sun.castShadow = Q.shadowMapSize > 0;   // low tier: no shadow map
+sun.shadow.mapSize.set(Q.shadowMapSize || 512, Q.shadowMapSize || 512);
 const SE = Q.shadowExtent; Object.assign(sun.shadow.camera, { left: -SE, right: SE, top: SE, bottom: -SE, near: 1, far: 400 }); sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
 scene.add(sun); scene.add(sun.target);
@@ -1879,7 +1906,7 @@ let bloomPass = null;
 if (Q.bloom) { bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.3, 0.55, 1.5); composer.addPass(bloomPass); }
 composer.addPass(new OutputPass());
 const filmPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uGrain: { value: 0.035 }, uVig: { value: 0.28 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uGrain: { value: Q.grain }, uVig: { value: 0.28 } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uGrain, uVig; varying vec2 vUv;
   float h( vec2 p ) { return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
@@ -2057,7 +2084,7 @@ function updateShadowCam() {
   // center the shadow frustum ahead of the viewer and snap to texels to prevent shimmering
   camera.getWorldDirection(_fw); _fw.y = 0; _fw.normalize();
   const cx = camera.position.x + _fw.x * SE * 0.6, cz = camera.position.z + _fw.z * SE * 0.6;
-  const texel = (2 * SE) / Q.shadowMapSize;
+  const texel = (2 * SE) / sun.shadow.mapSize.x;
   _sp.set(cx, 0, cz); _ld.copy(lightDir).negate(); _lm.lookAt(_O, _ld, _UP); _lmi.copy(_lm).invert();
   _sp.applyMatrix4(_lmi); _sp.x = Math.round(_sp.x / texel) * texel; _sp.y = Math.round(_sp.y / texel) * texel; _sp.applyMatrix4(_lm);
   sun.target.position.copy(_sp); sun.position.copy(_sp).addScaledVector(lightDir, 180); sun.target.updateMatrixWorld();
@@ -2068,7 +2095,7 @@ function updatePost(t) {
   camera.getWorldDirection(_fw); const facing = _fw.dot(sunDir);
   _sunNdc.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
   const gi = phaseState.godrays * smooth(0.1, 0.5, facing) * (sunDir.y > -0.02 ? 1 : 0);
-  godPass.enabled = gi > 0.01; godPass.uniforms.uI.value = gi; godPass.uniforms.uSun.value.set(_sunNdc.x * 0.5 + 0.5, _sunNdc.y * 0.5 + 0.5);
+  godPass.enabled = Q.godrays && gi > 0.01; godPass.uniforms.uI.value = gi; godPass.uniforms.uSun.value.set(_sunNdc.x * 0.5 + 0.5, _sunNdc.y * 0.5 + 0.5);
 }
 
 // =====================================================================================
@@ -2163,6 +2190,67 @@ function updateHud(dt) {
     hud.innerHTML = `<b>${phaseState.name}</b>${cyclePaused ? ' (paused)' : ''} · ${fps.toFixed(0)} fps${cs ? ` · ${cs.rigs} rigs (${cs.near} full) · ${cs.imp} far` : ''}<br><span class="k">debug: 1-4 phase · G hold phase · J fit test · P autopilot · L lineup · K close-up · H hitboxes · O AO · C camera</span>`; }
 }
 
+// =====================================================================================
+// QUALITY AT RUNTIME: tier changes, adaptive step-down, 30 fps cap, WebGL context loss
+// =====================================================================================
+function setTier(name) {
+  const T = QUALITY[name]; if (!T) return; tierName = name;
+  Q.pixelRatioMax = T.pixelRatioMax; renderScale = Math.min(renderScale, T.pixelRatioMax);
+  if (!T.shadowMapSize) sun.castShadow = false;
+  else { sun.castShadow = true; if (sun.shadow.mapSize.x !== T.shadowMapSize) { sun.shadow.mapSize.set(T.shadowMapSize, T.shadowMapSize); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } }
+  Q.shadowMapSize = T.shadowMapSize;
+  if (gtaoPass) gtaoPass.enabled = T.gtao;   // AO and bloom exist only if this load was built with them (high); otherwise from the next load
+  if (bloomPass) bloomPass.enabled = T.bloom;
+  Q.grain = T.grain; filmPass.uniforms.uGrain.value = T.grain; Q.godrays = T.godrays;
+  if (Q.msaa !== T.msaa) { Q.msaa = T.msaa; for (const t of [composer.renderTarget1, composer.renderTarget2]) { t.samples = T.msaa; t.dispose(); } }
+  if (Q.envSize !== T.envSize) { Q.envSize = T.envSize; lastEnvKey = -1; envTimer = 0; }
+  onResize(); gfxLabels();
+}
+const AQ = { bad: 0, acc: 0, n: 0, grace: 2, log: [] };
+function adaptQuality(rawDt) {
+  if (PLATFORM !== 'mobile' || gfxPrefs.mode !== 'auto' || TIERS.includes(urlQuality)) return;
+  if (!game || game.mode !== 'playing' || game.paused || document.hidden || glLost) { AQ.bad = 0; AQ.acc = AQ.n = 0; AQ.grace = 2; return; }
+  if ((AQ.grace -= rawDt) > 0) return;   // the first seconds of a run or after a pause (shader warm-up) don't count
+  AQ.acc += rawDt; AQ.n++; if (AQ.acc < 0.5) return;
+  const f = AQ.n / AQ.acc; AQ.acc = 0; AQ.n = 0;
+  AQ.bad = f < (gfxPrefs.cap30 ? GFX.fpsCap * 0.85 : GFX.adaptive.minFps) ? AQ.bad + 0.5 : 0;
+  if (AQ.bad >= GFX.adaptive.seconds) { AQ.bad = 0; const i = TIERS.indexOf(tierName);
+    if (i < TIERS.length - 1) { AQ.log.push({ from: tierName, to: TIERS[i + 1], fps: +f.toFixed(1), t: +(performance.now() / 1000).toFixed(1) }); gfxPrefs.autoTier = TIERS[i + 1]; saveGfx(); setTier(TIERS[i + 1]); } }
+}
+// pause menu → Graphics (touch devices): Auto / High / Medium / Low, and the 30 fps cap
+const $id = (id) => document.getElementById(id);
+function gfxLabels() {
+  if ($id('tGfx')) $id('tGfx').textContent = `Graphics: ${gfxPrefs.mode === 'auto' ? `auto (${tierName})` : tierName}`;
+  if ($id('tCap')) $id('tCap').textContent = `30 FPS: ${gfxPrefs.cap30 ? 'on' : 'off'}`;
+  if ($id('tGfxNote')) $id('tGfxNote').style.display = tierName !== LOAD_TIER ? 'block' : 'none';
+}
+if ($id('tGfx')) $id('tGfx').addEventListener('click', () => { const modes = ['auto', ...TIERS], m = modes[(modes.indexOf(gfxPrefs.mode) + 1) % modes.length];
+  gfxPrefs.mode = m; if (m === 'auto') gfxPrefs.autoTier = null; saveGfx(); setTier(m === 'auto' ? autoTier() : m); });
+if ($id('tCap')) $id('tCap').addEventListener('click', () => { gfxPrefs.cap30 = !gfxPrefs.cap30; saveGfx(); gfxLabels(); });
+gfxLabels();
+// WebGL context loss (a phone under memory pressure, a GPU reset): stop drawing, pause, say so; on restore carry on or reload
+let glLost = false;
+const glBox = document.createElement('div'); glBox.id = 'gGl';
+glBox.innerHTML = '<div class="card"><h2>Graphics paused</h2><div class="sub" id="gGlMsg">The browser reset the graphics. Restoring…</div><button class="btn" id="gGlGo" type="button" style="display:none">Continue</button><button class="btn" id="gGlReload" type="button">Reload</button></div>';
+document.body.appendChild(glBox);
+$id('gGlReload').addEventListener('click', () => location.reload());
+$id('gGlGo').addEventListener('click', () => { glBox.classList.remove('show'); if (game && game.paused) game.press('pause'); });
+renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); glLost = true; if (game && game.mode === 'playing' && !game.paused) game.setPaused(true);
+  $id('gGlMsg').textContent = 'The browser reset the graphics. Restoring…'; $id('gGlGo').style.display = 'none'; glBox.classList.add('show'); console.warn('WebGL context lost'); });
+renderer.domElement.addEventListener('webglcontextrestored', () => { glLost = false; if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } lastEnvKey = -1; envTimer = 0; updateEnv(); onResize();
+  $id('gGlMsg').textContent = 'Graphics are back. If the distant crowd looks wrong, reload.'; $id('gGlGo').style.display = ''; console.warn('WebGL context restored'); });
+// rough GPU memory (MB): textures (with mips) + shadow map + composer targets (incl. MSAA) + environment map
+function gpuMemory() {
+  const seen = new Set(); let tex = 0;
+  const add = (t) => { if (!t || seen.has(t) || !t.image) return; seen.add(t); const i = t.image, w = i.width || (i.data && i.width) || 0, h = i.height || 0; if (!w || !h) return; tex += w * h * 4 * (t.generateMipmaps !== false && t.minFilter !== THREE.LinearFilter && t.minFilter !== THREE.NearestFilter ? 4 / 3 : 1); };
+  scene.traverse((o) => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) for (const k in m) if (m[k] && m[k].isTexture) add(m[k]); });
+  const pr = renderer.getPixelRatio(), px = innerWidth * innerHeight * pr * pr, sm = sun.castShadow ? sun.shadow.mapSize.x ** 2 * 4 : 0;
+  const comp = px * 8 * 2 * (1 + (Q.msaa || 0)) + (gtaoPass && gtaoPass.enabled ? px * Q.gtaoScale ** 2 * 16 : 0) + (bloomPass && bloomPass.enabled ? px * 8 * 0.7 : 0) + px * 4;
+  const env = Q.envSize ** 2 * 6 * 8 * 2;
+  const mb = (b) => +(b / 1048576).toFixed(1);
+  return { tier: tierName, textures: mb(tex), textureCount: seen.size, shadow: mb(sm), composer: mb(comp), env: mb(env), total: mb(tex + sm + comp + env) };
+}
+
 // Debug / screenshot hooks
 window.__vb = {
   showSkater: false,   // keep the skater visible in the fixed 'ref' camera (close-up checks)
@@ -2175,6 +2263,7 @@ window.__vb = {
   stop(v = true) { S.moving = !v; },
   get game() { return game; },
   get touch() { return touch; },
+  get tier() { return tierName; }, setTier, gfx: gfxPrefs, AQ, gpuMemory, get glLost() { return glLost; }, get renderScale() { return renderScale; },
   setLineup, LINE, setFit, fit: FITV,
   findKind(kind, from = 2) { for (let i = from; i < from + 200; i++) if (kindFor(i) === kind) return i; return -1; },
   info() { return { fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, fallbacks: fallbacksUsed, phase: phaseState.name, z: camera.position.z, chars: chars && { ...chars.stats } }; },
@@ -2194,9 +2283,12 @@ window.__vb = {
 const clock = new THREE.Timer(); clock.connect(document);
 Object.defineProperty(clock, 'elapsedTime', { get() { return clock.getElapsed(); } });
 let started = false, worldT = 0;   // world time stops while paused, so waves, flags, dancers and birds hold still too
+let lastFrameTs = -1e9;
 function frame(ts) {
-  requestAnimationFrame(frame); clock.update(ts);
-  const rawDt = clock.getDelta(); updateResolution(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
+  requestAnimationFrame(frame);
+  if (gfxPrefs.cap30 && ts !== undefined && ts - lastFrameTs < 1000 / GFX.fpsCap - 3) return;   // low-power cap: every other 60 Hz frame
+  lastFrameTs = ts; clock.update(ts);
+  const rawDt = clock.getDelta(); updateResolution(rawDt); adaptQuality(rawDt); const stop = S.hitStop > 0 ? 0.06 : 1; if (S.hitStop > 0) S.hitStop -= rawDt;   // brief hit-stop when the skater takes a hit
   step(Math.min(rawDt, 0.05) * __vb.timeScale * stop, clock.elapsedTime);   // delta clamped: a hitch never teleports the skater
 }
 function step(dt, t) {
@@ -2214,7 +2306,7 @@ function step(dt, t) {
   updateFit(dt);
   if (chars) chars.update(dt, t, phaseState); else updatePeople(dt, t);
   updateBirds(t, dt); updateFliers(dt, t); updateShadowCam(); updatePost(t);
-  if (!__vb.noRender) { renderer.info.reset(); composer.render(dt); }   // noRender: headless simulation for bot tests
+  if (!__vb.noRender && !glLost) { renderer.info.reset(); composer.render(dt); }   // noRender: headless simulation for bot tests
   updateHud(dt);
 }
 let chars = null, game = null, touch = null;

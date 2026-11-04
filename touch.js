@@ -21,11 +21,12 @@ const angDiff = (a, b) => { let d = (a - b) % 360; if (d > 180) d -= 360; if (d 
 
 export function createTouch({ game, cfg: T }) {
   // ---- settings saved in this browser (pause menu → Controls); storage may be blocked, then they last for this visit
-  const prefs = { leftHanded: !!T.leftHanded, size: T.size, bufferMode: T.bufferMode };
+  const prefs = { leftHanded: !!T.leftHanded, size: T.size, bufferMode: T.bufferMode, haptics: !!T.haptics };
   try { const d = JSON.parse(localStorage.getItem(T.saveKey) || '{}');
     if (typeof d.leftHanded === 'boolean') prefs.leftHanded = d.leftHanded;
     if (T.sizes[d.size]) prefs.size = d.size;
-    if (d.bufferMode === 'assist' || d.bufferMode === 'ignore') prefs.bufferMode = d.bufferMode; } catch (e) { /* defaults */ }
+    if (d.bufferMode === 'assist' || d.bufferMode === 'ignore') prefs.bufferMode = d.bufferMode;
+    if (typeof d.haptics === 'boolean') prefs.haptics = d.haptics; } catch (e) { /* defaults */ }
   const savePrefs = () => { try { localStorage.setItem(T.saveKey, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } };
 
   // ---- DOM: a full-screen layer under every screen and button (it gets only touches that hit nothing else), the drawn
@@ -177,16 +178,21 @@ export function createTouch({ game, cfg: T }) {
   }
   // ---- pause menu (touch only): Resume, and Controls: which side the D-pad is on, its size, what edge touches do
   const $ = (id) => document.getElementById(id), SIZES = Object.keys(T.sizes);
+  // haptics (Android Chrome only: Safari has no navigator.vibrate), off by default
+  const canVibrate = typeof navigator.vibrate === 'function';
+  if (game.setFeedback) game.setFeedback((kind, f) => { if (!prefs.haptics || !canVibrate || !touchOn) return; try { navigator.vibrate(kind === 'land' ? Math.round(T.vibrate.land * (0.6 + 0.8 * f)) : T.vibrate[kind] || 0); } catch (e) { /* ignored */ } });
   function menuLabels() {
     if ($('tSide')) $('tSide').textContent = `D-pad: ${prefs.leftHanded ? 'right' : 'left'}`;
     if ($('tSize')) $('tSize').textContent = `Size: ${prefs.size}`;
     if ($('tBuf')) $('tBuf').textContent = `Edges: ${prefs.bufferMode}`;
+    if ($('tVib')) { $('tVib').textContent = `Vibration: ${prefs.haptics ? 'on' : 'off'}`; $('tVib').style.display = canVibrate ? '' : 'none'; }
   }
   const onBtn = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', () => { fn(); menuLabels(); }); };
   onBtn('tResume', () => { if (game.paused) game.press('pause'); });
   onBtn('tSide', () => api.setPref('leftHanded', !prefs.leftHanded));
   onBtn('tSize', () => api.setPref('size', SIZES[(SIZES.indexOf(prefs.size) + 1) % SIZES.length]));
   onBtn('tBuf', () => api.setPref('bufferMode', prefs.bufferMode === 'assist' ? 'ignore' : 'assist'));
+  onBtn('tVib', () => { api.setPref('haptics', !prefs.haptics); if (prefs.haptics && canVibrate) navigator.vibrate(T.vibrate.hit); });
   menuLabels();
 
   // ---- screens on a phone (body.mobile): touch buttons on every overlay, cards zoomed to fit, portrait waits, the name

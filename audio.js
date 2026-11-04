@@ -40,6 +40,9 @@ export function createAudio({ tracks, cfg: A }) {
   }
 
   function build() {
+    // iOS: Web Audio follows the ring/silent switch unless the audio session says 'playback' (Safari 16.4+). Left to the
+    // system by default (A.session null), so a phone on silent stays silent
+    try { if (A.session && navigator.audioSession) navigator.audioSession.type = A.session; } catch (e) { /* not supported */ }
     ctx = new AudioContext();
     const g = (v = 1) => { const n = ctx.createGain(); n.gain.value = v; return n; };
     node = { musicVol: g(prefs.musicVol), musicMute: g(prefs.musicMuted ? 0 : 1), duck: g(), pause: g(), master: g(prefs.muted ? 0 : 1), sfx: g(), amb: g(), sfxVol: g(prefs.sfxVol), sfxPause: g() };

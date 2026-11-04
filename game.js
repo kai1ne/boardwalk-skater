@@ -61,7 +61,7 @@ export function createGame(ctx) {
         if (Array.isArray(d.scores)) save.scores = d.scores; } }   // the old local table, left alone
     if (storageOK) try { localStorage.setItem(SV.key + '.test', '1'); localStorage.removeItem(SV.key + '.test'); } catch (e) { storageOK = false; }
   })();
-  let entering = false, wasAsking = false, touchHints = false;   // touchHints: touch.js switches the first-time hints to touch wording
+  let entering = false, wasAsking = false, touchHints = false, feedback = null;   // feedback(kind, f): touch.js haptics on landings, hits and bails   // touchHints: touch.js switches the first-time hints to touch wording
 
   // ---- global top 5: fetched on the title screen and at game over (5 s timeout, one retry); the last good board is
   // cached and shown as "offline: last known" when the server can't be reached. Nothing is ever queued for later.
@@ -504,7 +504,7 @@ export function createGame(ctx) {
     save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
   }
   function bail() {
-    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); audio.fx.bail(); audio.fx.stutter('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+    if (bot.on) bot.bails++; if (feedback) feedback('bail', 1); sk.trick = null; setMode('bail'); audio.fx.bail(); audio.fx.stutter('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
@@ -516,13 +516,13 @@ export function createGame(ctx) {
   }
   function hit(dmg = HP.hit, type = '') {
     if (st.mode !== 'playing') return false;   // every obstacle you run into costs its own damage (each one can only hit once)
-    audio.fx.hit(type === 'cones'); audio.fx.stutter('stumble'); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
+    audio.fx.hit(type === 'cones'); audio.fx.stutter('stumble'); if (feedback) feedback('hit', 1); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
   }
   function land() {
     sk.y = 0; sk.vy = 0; sk.landAt = performance.now();   // touch input compares finger-down times with this (landing buffer)
     if (sk.trick && !sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; }   // finished, still open for a second press
     if (sk.trick) { bail(); return; }   // a failed attempt, or still flipping
-    setMode('land'); audio.fx.land(sk.jumpF);
+    setMode('land'); audio.fx.land(sk.jumpF); if (feedback) feedback('land', sk.jumpF);
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
@@ -866,7 +866,7 @@ export function createGame(ctx) {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     get credits() { return creditsOpen; }, get entering() { return entering; },
-    setTouchHints(on) { touchHints = !!on; },
+    setTouchHints(on) { touchHints = !!on; }, setFeedback(fn) { feedback = fn; },
     // touch buttons: Restart from the pause menu (a fresh run), Skate again on the game-over screen (same rules as Enter)
     restart() { if (st.mode === 'playing' && st.paused) { setPaused(false); audio.fx.click(); startGame(); return true; } return press('confirm'); },
     submitName() { if (entering) submitScore(); },
