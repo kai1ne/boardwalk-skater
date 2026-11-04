@@ -156,7 +156,7 @@ export function createTouch({ game, cfg: T }) {
   window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   layer.addEventListener('lostpointercapture', (e) => { const p = ptrs.get(e.pointerId); if (p) end(p, true); });
   // browser gestures off on the game surface: no double-tap zoom, long-press callout or menu, pinch, pull-to-refresh
-  layer.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  layer.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
   layer.addEventListener('contextmenu', (e) => e.preventDefault());
   pad.addEventListener('contextmenu', (e) => e.preventDefault());
   for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });   // Safari pinch
