@@ -105,7 +105,7 @@ export function createTouch({ game, cfg: T }) {
     const la = game.landAt;   // a finger that came down in the last moments of the air, but got here after the landing frame
     if (la && e.timeStamp < la && e.timeStamp >= la - T.landingBuffer) { p.role = 'trick'; p.consumed = true; return; }
     if (holder('jump')) return;   // one jump finger at a time
-    p.role = 'jump'; game.press('crouchJump');
+    p.role = 'jump'; game.press('crouchJump', { src: 'touch' });
   }
   function move(e) {
     const p = ptrs.get(e.pointerId); if (!p) return;
@@ -148,7 +148,7 @@ export function createTouch({ game, cfg: T }) {
     p.dir = d;
     if (d) { arrows[d].classList.add('on'); pressDir(d); p.repT = now() + T.repeatDelay; }
   }
-  const pressDir = (d) => (d === 'up' || d === 'down' ? game.press(DIRS[d], { win: T.doubleTapWindow }) : game.press(DIRS[d]));
+  const pressDir = (d) => game.press(DIRS[d], d === 'up' || d === 'down' ? { win: T.doubleTapWindow, src: 'touch' } : { src: 'touch' });
 
   layer.addEventListener('pointerdown', down);
   window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.pointerType === 'pen') enableTouchUI(); }, { capture: true, passive: true });   // a touch on a button counts too
@@ -166,7 +166,8 @@ export function createTouch({ game, cfg: T }) {
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
   // ---- per frame: let go when the game stops taking input, repeat a held lane direction if configured, show/hide the UI
-  let shown = null;
+  let shown = null, dbgMod = null, dbgLoading = false, dbgArmed = false;
+  const debugWanted = new URLSearchParams(location.search).get('debug') === '1';   // ?debug=1 (phones have no T key)
   function tick() { requestAnimationFrame(tick); frame(); }
   function frame() {
     const on = live();
@@ -174,6 +175,10 @@ export function createTouch({ game, cfg: T }) {
     else if (T.repeat) for (const p of ptrs.values()) if (isPad(p) && (p.dir === 'left' || p.dir === 'right') && now() >= p.repT) { pressDir(p.dir); p.repT = now() + T.repeatInterval; }
     const vis = touchOn && on;
     if (vis !== shown) { shown = vis; document.body.classList.toggle('tplay', vis); }
+    if (debugWanted && !dbgArmed) { dbgArmed = true; game.dbgOn = true; }   // ?debug=1 turns it on once; T toggles it
+    const dbg = game.dbgOn;
+    if (dbg && !dbgMod && !dbgLoading) { dbgLoading = true; import('./touch-debug.js').then((m) => { dbgMod = m.createTouchDebug({ game, touch: api, cfg: T }); }).catch((e) => console.error('[touch debug]', e)); }
+    if (dbgMod) dbgMod.frame(dbg);
     if (api.onFrame) api.onFrame();
   }
   // ---- pause menu (touch only): Resume, and Controls: which side the D-pad is on, its size, what edge touches do

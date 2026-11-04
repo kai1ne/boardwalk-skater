@@ -819,7 +819,9 @@ export function createGame(ctx) {
   $('gCreditsClose').addEventListener('click', () => showCredits(false));
   for (const b of ['gCreditsBtn', 'gCreditsClose']) $(b).addEventListener('mousedown', (e) => e.preventDefault());   // a click never leaves keyboard focus on the button
   // opt.win: the double-input window for a flip (touch sends its own); the keyboard leaves it out
+  const recent = [];   // the last named actions pressed / released (the touch debug overlay lists them)
   function press(a, opt) {   // returns true if the action did something on this screen
+    recent.push({ a, t: performance.now(), src: opt ? 'touch' : 'key' }); if (recent.length > 8) recent.shift();
     if (creditsOpen) { if (a === 'pause') { showCredits(false); audio.fx.click(); } else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
     if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); audio.fx.click(); return true; } return false; }
     if (st.mode === 'title') { if (a === 'confirm') { audio.fx.click(); startGame(); return true; } if (a === 'credits') { audio.fx.click(); showCredits(true); return true; } return false; }
@@ -866,6 +868,7 @@ export function createGame(ctx) {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     get credits() { return creditsOpen; }, get entering() { return entering; },
+    get dbgOn() { return dbgOn; }, set dbgOn(v) { dbgOn = !!v; }, recent, get pose() { return S.pose; }, get charge() { return sk.mode === 'charge' ? chargeFrac() : 0; },
     setTouchHints(on) { touchHints = !!on; }, setFeedback(fn) { feedback = fn; },
     // touch buttons: Restart from the pause menu (a fresh run), Skate again on the game-over screen (same rules as Enter)
     restart() { if (st.mode === 'playing' && st.paused) { setPaused(false); audio.fx.click(); startGame(); return true; } return press('confirm'); },
