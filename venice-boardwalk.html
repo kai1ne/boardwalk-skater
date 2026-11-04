@@ -228,22 +228,22 @@ const GAME = {
            limiter: { threshold: -1 },     // dBFS where the master limiter catches peaks
            duck: { db: 3, attack: 0.05, hold: 0.3, release: 0.6 },   // music dips this many dB (2–4 is gentle) under landed tricks, bails, hits and slips
            sfx: { volume: 0.7,             // default SFX volume ([ / ] change it in 5% steps; saved with the music settings). Ambience follows it too
-                  maxVoices: 28, performers: { max: 3, maxVoices: 40, level: 0.16, circleLevel: 0.32 },   // voice caps (sounds over the cap are skipped); loudness at 4 m of a lane performer / a drum circle off the lanes
+                  maxVoices: 28, performers: { max: 3, maxVoices: 40, level: 0.32, circleLevel: 0.64 },   // voice caps (sounds over the cap are skipped); loudness at 4 m of a lane performer / a drum circle off the lanes
                   positional: { refDistance: 4, rolloff: 1.1 },   // PannerNode 'inverse' distance model for bells, dogs, the camera flash and performers
                   roll: { rumble: 0.08, rumbleHz: 140, speedLo: 4, speedHi: 30 },   // wheels: a low rumble, louder from speedLo to speedHi m/s, silent in the air
                   clips: { pop: 0.5, land: 0.5 },   // levels of the recorded ollie pop and landing (assets/sfx/ollie-*.mp3)
                   charge: { level: 0.035, from: 196, to: 523 },   // the tone while Space is held: Hz at no crouch → full crouch
                   success: { base: 587, maxSteps: 12, level: 0.09 },   // landed-trick chime: Hz at combo 1, +1 semitone per combo step up to maxSteps
                   lowHealth: { every: 1.1, level: 0.16 },   // heartbeat under 30% health: s between beats
-                  bell: 0.07, bark: 0.45, jingle: 0.1, sting: { level: 0.15, duckDb: 4, duckHold: 1.4 },   // the game-over sting ducks the music more and for longer
+                  bell: 0.14, bark: 0.9, flash: 0.44, jingle: 0.1, sting: { level: 0.15, duckDb: 4, duckHold: 1.4 },   // the game-over sting ducks the music more and for longer
                   ambience: { folder: 'assets/sfx/', level: 0.55, loopFade: 2, gulls: 0.35, barks: 0.12,
                     files: { pop: 'ollie-pop.mp3', land: 'ollie-land.mp3', waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
-                    // per weather phase, in PHASES order, blended with the lighting: loop levels, waves low-pass (Hz: low = muffled), one-shot rates per minute
+                    // per weather phase, in PHASES order (the surf is kept barely audible), blended with the lighting: loop levels, waves low-pass (Hz: low = muffled), one-shot rates per minute
                     phases: [
-                      { waves: 0.75, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, barksPerMin: 0.8 },     // overcast fog: muffled surf, few gulls
-                      { waves: 0.6, wavesLP: 12000, crowd: 0.55, gullsPerMin: 7, barksPerMin: 1.2 },      // sunny: surf, gulls, a busy crowd
-                      { waves: 0.65, wavesLP: 6000, crowd: 0.3, gullsPerMin: 4, barksPerMin: 0.8 },       // golden hour: a softer crowd, surf
-                      { waves: 0.6, wavesLP: 3500, crowd: 0.1, gullsPerMin: 0.6, barksPerMin: 0.6 } ] } } },   // blue hour: a quiet crowd, surf
+                      { waves: 0.1, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, barksPerMin: 0.8 },     // overcast fog: faint muffled surf, few gulls
+                      { waves: 0.08, wavesLP: 12000, crowd: 0.55, gullsPerMin: 7, barksPerMin: 1.2 },      // sunny: surf, gulls, a busy crowd
+                      { waves: 0.08, wavesLP: 6000, crowd: 0.3, gullsPerMin: 4, barksPerMin: 0.8 },       // golden hour: a softer crowd, surf
+                      { waves: 0.08, wavesLP: 3500, crowd: 0.1, gullsPerMin: 0.6, barksPerMin: 0.6 } ] } } },   // blue hour: a quiet crowd, surf
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)

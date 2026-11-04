@@ -217,7 +217,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     // a dog barking where it is (recorded bark, pitched a little per dog)
     bark(x, z, times = 1, rate = 1) { const d = spot(x, z, 1.5, 0.5); for (let i = 0; i < times; i++) oneShot(buf.bark, d, X.bark, rate * rand(0.97, 1.03), ctx.currentTime + i * rand(0.32, 0.42)); },
     // a phone camera: the shutter's two clicks, where the influencer is
-    flash(x, z) { if (!take('fx', 2)) return; const t = now(), d = spot(x, z, 0.5, 1.5); noise(d, t, { type: 'highpass', f: 3200, q: 0.7, a: 0.001, d: 0.008, peak: 0.22 }); noise(d, t + 0.055, { type: 'highpass', f: 2800, q: 0.7, a: 0.001, d: 0.012, peak: 0.18 }); },
+    flash(x, z) { if (!take('fx', 2)) return; const t = now(), d = spot(x, z, 0.5, 1.5); noise(d, t, { type: 'highpass', f: 3200, q: 0.7, a: 0.001, d: 0.008, peak: X.flash }); noise(d, t + 0.055, { type: 'highpass', f: 2800, q: 0.7, a: 0.001, d: 0.012, peak: X.flash * 0.82 }); },
     // menus: a soft tick
     click() { if (!take('fx', 2)) return; const t = now(); tone(out, t, { f: 1500, a: 0.001, d: 0.025, peak: 0.1 }); noise(out, t, { type: 'highpass', f: 4000, a: 0.001, d: 0.008, peak: 0.08 }); },
     // 3-2-1 beeps (n = 3, 2, 1) and the higher "go" (n = 0)
