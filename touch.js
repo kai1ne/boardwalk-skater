@@ -65,7 +65,7 @@ export function createTouch({ game, cfg: T }) {
 
   // ---- touch UI appears with the first touch and stays
   let touchOn = false;
-  function enableTouchUI() { if (touchOn) return; touchOn = true; document.body.classList.add('touch'); layout(); if (api.onEnable) api.onEnable(); }
+  function enableTouchUI() { if (touchOn) return; touchOn = true; document.body.classList.add('touch'); if (game.setTouchHints) game.setTouchHints(true); layout(); if (api.onEnable) api.onEnable(); }
 
   // ---- pointers
   const ptrs = new Map();   // pointerId → { id, role, x, y, x0, y0, t0, dir, half, consumed }
@@ -150,6 +150,7 @@ export function createTouch({ game, cfg: T }) {
   const pressDir = (d) => (d === 'up' || d === 'down' ? game.press(DIRS[d], { win: T.doubleTapWindow }) : game.press(DIRS[d]));
 
   layer.addEventListener('pointerdown', down);
+  window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.pointerType === 'pen') enableTouchUI(); }, { capture: true, passive: true });   // a touch on a button counts too
   window.addEventListener('pointermove', move, { passive: true });
   window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   layer.addEventListener('lostpointercapture', (e) => { const p = ptrs.get(e.pointerId); if (p) end(p, true); });
@@ -188,14 +189,93 @@ export function createTouch({ game, cfg: T }) {
   onBtn('tBuf', () => api.setPref('bufferMode', prefs.bufferMode === 'assist' ? 'ignore' : 'assist'));
   menuLabels();
 
-  layout(); requestAnimationFrame(tick);
+  // ---- screens on a phone (body.mobile): touch buttons on every overlay, cards zoomed to fit, portrait waits, the name
+  // field stays above the on-screen keyboard, fullscreen where the browser has it
+  const mobile = document.body.classList.contains('mobile'), body = document.body;
+  onBtn('tStart', () => { if (game.mode === 'title' && !game.credits) game.press('confirm'); });
+  onBtn('tAgain', () => game.restart());
+  onBtn('tRestart', () => { releaseAll(); game.restart(); });
+  onBtn('tSubmit', () => game.submitName());
+  // the first touch gesture starts the sound. iOS doesn't accept touchstart (WebKit bug 149367), so touchend, pointerup and click
+  const unlock = () => { if (game.audio) game.audio.unlock(); };
+  window.addEventListener('touchend', unlock, { capture: true, passive: true });
+  window.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') unlock(); }, { capture: true, passive: true });
+  window.addEventListener('click', () => { if (touchOn || mobile) unlock(); }, { capture: true, passive: true });
+  if (mobile && game.setTouchHints) game.setTouchHints(true);
+
+  // fit each shown card inside the visible area (zoom), and scale the HUD with the shorter screen side
+  function fitCards() {
+    if (!mobile && !touchOn) return;
+    const vv = window.visualViewport, vw = vv ? vv.width : innerWidth, vh = vv ? vv.height : innerHeight;
+    document.documentElement.style.setProperty('--ui', clamp(Math.min(vw, vh) / T.uiRef, T.uiMin, 1).toFixed(3));
+    for (const sc of document.querySelectorAll('.screen')) {
+      const card = sc.querySelector('.card'); if (!card) continue;
+      if (!sc.classList.contains('show') && sc.id !== 'gTitle') continue;
+      const availW = vw - L.inset.l - L.inset.r - 12, availH = vh - L.inset.t - L.inset.b - 12;
+      let z = 1;
+      for (let k = 0; k < 2; k++) {   // twice: the ≥ 44 px buttons grow as the zoom shrinks
+        card.style.zoom = 1; card.style.setProperty('--z', z);
+        const h = sc.id === 'gCredits' ? Math.min(card.offsetHeight, 520) : card.offsetHeight;
+        z = clamp(Math.min(1, availH / h, availW / card.offsetWidth), T.cardMin, 1);
+      }
+      card.style.zoom = z; card.style.setProperty('--z', z);
+    }
+  }
+  let fitQueued = false; const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitCards(); }); };
+  const mo = new MutationObserver(queueFit);
+  for (const sc of document.querySelectorAll('.screen')) mo.observe(sc, { attributes: true, attributeFilter: ['class'] });
+  for (const id of ['gEntry', 'gOverGo', 'gLbMsg', 'gLbRetry', 'gNewBest']) if ($(id)) mo.observe($(id), { attributes: true, attributeFilter: ['style'] });
+  mo.observe(body, { attributes: true, attributeFilter: ['class'] });   // loading finished, touch UI on, keyboard up
+  window.addEventListener('resize', queueFit); if (window.visualViewport) window.visualViewport.addEventListener('resize', queueFit);
+
+  // portrait: "Rotate your phone" covers everything (CSS) and a live run pauses; turning back resumes the run it paused
+  let rotatePaused = false;
+  function checkOrientation() {
+    if (!mobile) return;
+    const portrait = innerHeight > innerWidth;
+    if (portrait && game.mode === 'playing' && !game.paused) { releaseAll(); game.setPaused(true); rotatePaused = true; }
+    else if (!portrait && rotatePaused) { rotatePaused = false; if (game.mode === 'playing' && game.paused && !document.hidden) game.setPaused(false); }
+    api.portrait = portrait;
+  }
+  window.addEventListener('resize', checkOrientation); window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 100));
+  if (window.screen && screen.orientation) screen.orientation.addEventListener('change', checkOrientation);
+
+  // name entry: with the keyboard up the visible area shrinks (visualViewport), so the panel moves into it
+  const nameEl = $('gName');
+  function checkKeyboard() {
+    const vv = window.visualViewport; if (!vv || !nameEl) return;
+    const up = (mobile || touchOn) && document.activeElement === nameEl && vv.height < innerHeight * T.keyboardShare;
+    document.documentElement.style.setProperty('--vvTop', vv.offsetTop + 'px'); document.documentElement.style.setProperty('--vvH', vv.height + 'px');
+    if (up !== body.classList.contains('kbd')) { body.classList.toggle('kbd', up); queueFit(); }
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', checkKeyboard); window.visualViewport.addEventListener('scroll', checkKeyboard); }
+  if (nameEl) { nameEl.addEventListener('focus', () => { setTimeout(checkKeyboard, 300); if (mobile || touchOn) setTimeout(() => nameEl.select(), 0); });   // the last name is pre-filled: select it so typing replaces it
+    nameEl.addEventListener('blur', () => { body.classList.remove('kbd'); queueFit(); if (mobile) setTimeout(() => window.scrollTo(0, 0), 50); }); }
+
+  // fullscreen: only where the browser has it for the page (not on iPhone: Safari allows element fullscreen on iPad only),
+  // then a landscape lock where that exists (Chrome on Android, in fullscreen)
+  const d = document, fsEl = () => d.fullscreenElement || d.webkitFullscreenElement;
+  const canFs = !!(d.fullscreenEnabled || d.webkitFullscreenEnabled) && !!(d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen);
+  body.classList.toggle('canfs', canFs);
+  async function toggleFullscreen() {
+    try {
+      if (fsEl()) { await (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+      const el = d.documentElement; await Promise.resolve((el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' }));
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => { /* not supported here */ });
+    } catch (e) { console.warn('fullscreen:', e && e.name); }
+  }
+  const fsLabel = () => { for (const id of ['tFull', 'tFull2']) if ($(id)) $(id).textContent = fsEl() ? 'Exit fullscreen' : 'Fullscreen'; body.classList.toggle('fs', !!fsEl()); };
+  for (const id of ['tFull', 'tFull2']) if ($(id)) $(id).addEventListener('click', toggleFullscreen);
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) d.addEventListener(ev, () => { fsLabel(); layout(); queueFit(); });
+
 
   const api = {
     prefs, layout: L, pointers: ptrs, relayout: layout, releaseAll, frame, get on() { return touchOn; }, enableTouchUI,
     get dpadDir() { for (const p of ptrs.values()) if (isPad(p) && p.dir) return p.dir; return null; },
     get guardActive() { return now() - dpadLiftAt < T.postReleaseGuard; },
     setPref(k, v) { prefs[k] = v; savePrefs(); layout(); menuLabels(); },
-    onEnable: null, onFrame: null,
+    onEnable: null, onFrame: null, portrait: false,
   };
+  layout(); requestAnimationFrame(tick); checkOrientation(); fitCards();
   return api;
 }

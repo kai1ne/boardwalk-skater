@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <title>Boardwalk Skater</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Boardwalk Skater">
 <meta name="description" content="Skate the boardwalk, dodge the crowd and land your tricks. A free browser game for desktop.">
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" href="icon.png" type="image/png" sizes="192x192">
@@ -120,7 +126,7 @@
   #hud, #ghud, #gBot, .screen, .card input { font-weight: bold; text-transform: uppercase; }   /* all UI text: bold Trebuchet MS in capitals */
   /* ---- touch (touch.js): nothing here shows until the first touch puts .touch on the body; .tplay = a run is live */
   body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
-  html, body, canvas, #touchLayer { touch-action: none; }
+  html, body { touch-action: pan-y; overscroll-behavior: none; } canvas, #touchLayer, #tDpad { touch-action: none; }   /* pan-y, not none, on the page: the credits roll still scrolls by touch; pan-y also rules out pinch and double-tap zoom */
   .card .roll { touch-action: pan-y; } .card input { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
   #touchLayer { position: fixed; inset: 0; }
   #tSafe { position: fixed; left: 0; top: 0; visibility: hidden; pointer-events: none;
@@ -136,7 +142,46 @@
   #tPause svg { width: 52%; height: 52%; fill: currentColor; }
   body.tplay #tDpad { display: block; } body.tplay #tPause { display: flex; }
   body.touch #ghud .tr { right: calc(18px + var(--tPause, 0px)); } body.touch.lefty #ghud .tl { left: calc(18px + var(--tPause, 0px)); }
-  .tonly { display: none; } body.touch .tonly { display: block; } body.touch .kbonly { display: none; }
+  .tonly { display: none; } body.touch .tonly, body.mobile .tonly { display: block; } body.touch .kbonly, body.mobile .kbonly { display: none; }
+  body.touch span.tonly, body.mobile span.tonly { display: inline; }
+  /* ---- mobile layout (body.mobile: a touch device; nothing here applies on desktop). --ui scales the HUD to the screen (vmin),
+     each shown card is zoomed to fit (touch.js sets --z on it), and touch targets stay ≥ 44 px after the zoom */
+  html { height: 100%; } body.mobile { height: 100dvh; }
+  body.mobile #ghud .tl { left: calc(14px + env(safe-area-inset-left)); top: calc(10px + env(safe-area-inset-top)); transform: scale(var(--ui, 1)); transform-origin: top left; }
+  body.mobile #ghud .tr { right: calc(14px + env(safe-area-inset-right) + var(--tPause, 0px)); top: calc(10px + env(safe-area-inset-top)); transform: scale(var(--ui, 1)); transform-origin: top right; }
+  body.mobile.lefty #ghud .tl { left: calc(14px + env(safe-area-inset-left) + var(--tPause, 0px)); } body.mobile.lefty #ghud .tr { right: calc(14px + env(safe-area-inset-right)); }
+  body.mobile .pop { zoom: var(--ui, 1); }
+  body.mobile #gDbg { top: calc(90px * var(--ui, 1) + 20px); }
+  body.mobile .screen { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); box-sizing: border-box; }
+  body.mobile .card .btn { min-height: calc(44px / var(--z, 1)); min-width: calc(44px / var(--z, 1)); padding: 10px 20px; touch-action: manipulation; }
+  body.mobile .card .btn.big2 { font-size: 16px; padding: 12px 30px; }
+  .card .tgo .btn { margin-top: 4px; }
+  .card .ticons svg { width: 22px; height: 22px; vertical-align: middle; fill: #fff; stroke: #fff; }
+  .card .entry #tSubmit { display: none; margin: 10px auto 0; } body.mobile .card .entry #tSubmit, body.touch .card .entry #tSubmit { display: inline-block; }
+  .card .tfs { display: none !important; } body.canfs.mobile .card .tfs, body.canfs.touch .card .tfs { display: block !important; } body.canfs .card .opts .tfs { display: inline-block !important; }
+  body.fs .card .tfs { opacity: .75; }
+  /* landscape phone: the tall title and game-over cards become two columns (logo and score left, the rest right) */
+  body.mobile #gTitle .card, body.mobile #gOver .card { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-auto-flow: row dense; column-gap: 28px;
+    align-items: center; width: 880px; max-width: none; }
+  body.mobile #gTitle .card > *, body.mobile #gOver .card > * { grid-column: 2; }
+  body.mobile #gTitle .card > h1, body.mobile #gTitle .card > .sub, body.mobile #gTitle .card > .credit,
+  body.mobile #gOver .card > h1, body.mobile #gOver .card > .nb, body.mobile #gOver .card > .big, body.mobile #gOver .card > .best, body.mobile #gOver .card > .disc, body.mobile #gOver .card > .note { grid-column: 1; }
+  body.mobile #gTitle .card > h1 { grid-row: 1 / span 4; } body.mobile #gTitle .card > .sub { grid-row: 5; margin-bottom: 0; } body.mobile #gTitle .card > .credit { grid-row: 6; margin-top: 0; }
+  body.mobile #gTitle .card > .btn { margin-top: 8px; }
+  body.mobile #gTitle .card h1 .logo, body.mobile #gOver .card h1 .logo.over { width: 100%; margin: 0; transform: none; }
+  body.mobile #gCredits .card h1 .logo.cr, body.mobile #gPause .card h1 .logo.over { width: auto; max-width: 100%; height: 26vh; margin: 0 auto 4px; transform: none; }
+  body.mobile #gCredits .card { max-height: calc(100dvh - 24px); } body.mobile #gCredits .card .roll { min-height: 40vh; }
+  body.mobile #gTitle .card .hs, body.mobile #gOver .card .hs { margin-bottom: 10px; }
+  body.kbd #gOver .card { display: block; width: auto; }
+  /* name entry with the on-screen keyboard up: the panel moves into the visible area and shows only the entry */
+  body.kbd #gOver { top: var(--vvTop, 0px); height: var(--vvH, 100%); bottom: auto; align-items: flex-start; padding-top: 6px; }
+  body.kbd #gOver .card > :not(.entry) { display: none !important; } body.kbd #gOver .card { padding: 12px 18px; }
+  /* portrait on a phone: everything waits behind "Rotate your phone" */
+  #tRotate { display: none; position: fixed; inset: 0; z-index: 50; background: #0c1016; color: #ffd84a; align-items: center; justify-content: center; text-align: center;
+             font: bold 20px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-transform: uppercase; touch-action: none; }
+  #tRotate svg { width: 96px; height: 96px; fill: none; stroke: #ffd84a; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 16px; animation: tRot 2.2s ease-in-out infinite; }
+  @keyframes tRot { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  @media (orientation: portrait) { body.mobile #tRotate { display: flex; } }
   .card .opts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; } .card .opts .btn { margin: 0; }
   body.touch .card .btn { min-height: 44px; min-width: 44px; padding: 10px 20px; touch-action: manipulation; }
 </style>
@@ -151,26 +196,32 @@
 </script>
 </head>
 <body class="booting">
+<script>   // touch device (Pointer Events + screen size, not the user agent): mobile layout and the medium quality tier. ?mobile=1 / 0 forces it
+  window.__mobile = (() => { const q = new URLSearchParams(location.search).get('mobile'); if (q === '1' || q === '0') return q === '1';
+    return navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 1024; })();
+  if (window.__mobile) document.body.classList.add('mobile');
+</script>
+<div id="tRotate"><div><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="4"/><path d="M48 46 a20 20 0 0 1 -20 12" fill="none"/><path d="M26 54 l4 4 l-5 2"/></svg><div>Rotate your phone</div></div></div>
 <div id="loading"></div>
 <div id="hud" class="off"></div>
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
 <div id="gTitle" class="screen show"><div class="card"><h1><img class="logo" id="gTitleLogo" src="assets/ui/title-logo.webp" fetchpriority="high" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
-  <div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div>
+  <div class="kbonly"><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div></div><div class="tonly"><div class="hsT">CONTROLS</div><div class="keys ticons"><kbd title="D-pad"><svg viewBox="0 0 24 24" aria-label="D-pad"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg></kbd> <kbd title="Hold the screen"><svg viewBox="0 0 24 24" aria-label="Hold"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9.5" fill="none" stroke-width="1.6"/></svg></kbd></div></div>
   <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gScores"><li class="empty"><span class="r">1</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">2</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">3</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">4</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">5</span><span class="n">—</span><span class="s"></span></li></ol><div class="lbnote" id="gLbNote">Loading…</div></div>
-  <div class="go">Press Space to start</div><div class="load" id="gLoad"><div class="bar"><i id="gLoadFill"></i></div><div id="gLoadText">Loading the game…</div></div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
+  <div class="go kbonly">Press Space to start</div><div class="tonly tgo"><button class="btn big2" id="tStart" type="button">Tap to start</button></div><div class="load" id="gLoad"><div class="bar"><i id="gLoadFill"></i></div><div id="gLoadText">Loading the game…</div></div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><button class="btn tonly tfs" id="tFull" type="button">Fullscreen</button><div class="credit">Made by Calvin Bak</div></div></div>
 <script>   // load timings (ms since navigation): title = the title card and its logo are up, playable = Space starts a run (__vb.loadTimes)
   window.__loadTimes = {}; { const l = document.getElementById('gTitleLogo'), t = () => { window.__loadTimes.title = window.__loadTimes.title || performance.now(); };
     if (l.complete) t(); else { l.addEventListener('load', t); l.addEventListener('error', t); } }
 </script>
 <div id="gOver" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/gameover-logo.webp" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Your best: <span id="gOverBest">0</span></div>
-  <div class="entry" id="gEntry"><div class="nb">Global top 5! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint" id="gEntryHint">3 to 10 letters or numbers · Enter to submit</div></div>
+  <div class="entry" id="gEntry"><div class="nb">Global top 5! Enter your name</div><input id="gName" type="text" maxlength="10" pattern="[A-Za-z0-9]*" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="NAME"><button class="btn tonly" id="tSubmit" type="button">OK</button><div class="hint" id="gEntryHint">3 to 10 letters or numbers · Enter to submit</div></div>
   <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gOverScores"></ol><div class="lbnote" id="gOverLbNote"></div></div>
   <div class="lbmsg" id="gLbMsg"></div><button class="btn" id="gLbRetry" tabindex="-1">Retry</button>
   <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Your best and discovered tricks can't be saved in this browser</div>
-  <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
+  <div class="go" id="gOverGo"><span class="kbonly">Press Enter or Space to skate again</span><span class="tonly"><button class="btn big2" id="tAgain" type="button">Skate again</button></span></div></div></div>
 <div id="gCredits" class="screen"><div class="card">
   <h1><img class="logo over cr" data-src="assets/ui/credits-logo.webp" alt="Credits"></h1>
   <div class="roll" id="gCreditsRoll">
@@ -191,7 +242,7 @@
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
 <div id="gPause" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="kbonly"><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div>
-  <div class="tonly"><button class="btn" id="tResume" type="button">Resume</button>
+  <div class="tonly"><div class="opts"><button class="btn big2" id="tResume" type="button">Resume</button><button class="btn" id="tRestart" type="button">Restart</button><button class="btn tfs" id="tFull2" type="button">Fullscreen</button></div>
     <div class="hsT" style="margin-top:16px">CONTROLS</div><div class="opts"><button class="btn" id="tSide" type="button">D-pad: left</button><button class="btn" id="tSize" type="button">Size: medium</button><button class="btn" id="tBuf" type="button">Edges: assist</button></div></div></div></div>
 <script type="module">
 import * as THREE from 'three';
@@ -245,7 +296,10 @@ const GAME = {
            airTrickOn: 'down',             // trick taps fire on touch 'down' or on lift ('up')
            landingBuffer: 80,              // ms: a finger down this long before the landing frame (but handled after it) is still a consumed trick tap
            tapMaxMs: 600, tapSlop: 0.05,   // title screen: a tap (not a drag) starts a run
-           pauseSize: 0.11, pauseMin: 44, pauseMargin: 0.03 },   // pause button (share of the shorter side, px floor) and its edge gap
+           pauseSize: 0.11, pauseMin: 44, pauseMargin: 0.03,   // pause button (share of the shorter side, px floor) and its edge gap
+           uiRef: 560, uiMin: 0.6,         // mobile HUD scale = shorter screen side / uiRef px, at least uiMin
+           cardMin: 0.4,                   // smallest zoom a menu card gets to fit the screen
+           keyboardShare: 0.85 },          // the name entry moves up when the visible height drops below this share (on-screen keyboard)
   lanes: { count: 4, width: 2.1,          // 4 lanes across the 9 m boardwalk, centres at ±1.05 / ±3.15 m
            carveRatio: 0.3,                // sideways speed of a lane carve as a share of forward speed (0.3 → 0.9 s per lane at 27 km/h, 0.45 s at 58 km/h)
            carveMin: 0.4, carveMax: 1.2,   // s limits on one carve
@@ -2098,6 +2152,9 @@ function onResize() {
   renderer.setPixelRatio(pr); renderer.setSize(w, h); composer.setPixelRatio(pr); composer.setSize(w, h);
 }
 window.addEventListener('resize', onResize);
+// phones: the browser toolbars and the on-screen keyboard change the visible area without always firing resize
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (window.innerWidth !== renderer.domElement.clientWidth || window.innerHeight !== renderer.domElement.clientHeight) onResize(); });
+window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
 let fpsAcc = 0, fpsN = 0, fps = 0, hudT = 0;
 function updateHud(dt) {
   fpsAcc += dt; fpsN++; hudT -= dt;

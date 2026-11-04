@@ -61,7 +61,7 @@ export function createGame(ctx) {
         if (Array.isArray(d.scores)) save.scores = d.scores; } }   // the old local table, left alone
     if (storageOK) try { localStorage.setItem(SV.key + '.test', '1'); localStorage.removeItem(SV.key + '.test'); } catch (e) { storageOK = false; }
   })();
-  let entering = false, wasAsking = false;
+  let entering = false, wasAsking = false, touchHints = false;   // touchHints: touch.js switches the first-time hints to touch wording
 
   // ---- global top 5: fetched on the title screen and at game over (5 s timeout, one retry); the last good board is
   // cached and shown as "offline: last known" when the server can't be reached. Nothing is ever queued for later.
@@ -528,7 +528,7 @@ export function createGame(ctx) {
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
     let trickPts = 0; for (const t of sk.tricks) { pts += TR[t].pts; trickPts += TR[t].pts; names.push(TRICK_NAME[t]); st.trickCounts[t] = (st.trickCounts[t] || 0) + 1; if (!bot.on && !save.tricks[t]) { save.tricks[t] = true; writeSave(); } }
     if (bot.on) bot.landed += sk.tricks.length;
-    if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', 'Try ↑ or ↓ in the air');
+    if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', touchHints ? 'Try the D-pad up or down, or tap the screen, in the air' : 'Try ↑ or ↓ in the air');
     const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
     if (names.length) audio.fx.success(st.combo);   // a landed trick: the chime climbs with the combo
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');   // a trick's popup shows its own points; the score tag shows the jump's total
@@ -755,7 +755,7 @@ export function createGame(ctx) {
     drawDebugOverlay();
     if (st.paused) { writePose(sk.lean || 0); drawHitboxes(); return; }
     clock += dt;
-    if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; if (!st.jumped && (st.noJumpT += dt) >= G.hints.holdAfter) hint('hold', 'Try holding Space'); }
+    if (st.mode === 'playing') { st.playT += dt; st.rampT = (st.rampT || 0) + dt; if (!st.jumped && (st.noJumpT += dt) >= G.hints.holdAfter) hint('hold', touchHints ? 'Try holding the screen' : 'Try holding Space'); }
     if (bot.on) { autopilot(); if (st.mode === 'playing') bot.time += dt; }
     if (st.mode === 'over') { st.overT += dt; if (st.overT > G.overDelay && !ui.over.classList.contains('show')) showScreens(); }
     // title screen: cruise and throw the odd trick for show
@@ -866,6 +866,10 @@ export function createGame(ctx) {
     update, keydown, keyup, press, release,
     get paused() { return st.paused; }, get mode() { return st.mode; }, get debug() { return debug; },
     get credits() { return creditsOpen; }, get entering() { return entering; },
+    setTouchHints(on) { touchHints = !!on; },
+    // touch buttons: Restart from the pause menu (a fresh run), Skate again on the game-over screen (same rules as Enter)
+    restart() { if (st.mode === 'playing' && st.paused) { setPaused(false); audio.fx.click(); startGame(); return true; } return press('confirm'); },
+    submitName() { if (entering) submitScore(); },
     get airborne() { return sk.mode === 'air'; }, get landAt() { return sk.landAt || 0; }, cancelCharge,
     // test hooks
     st, sk, OBS, LANE_X, save, writeSave, refreshBoard, lb, director, bot, botReport, setAutopilot, start: startGame, setPaused, audio, kill() { st.health = 1; hit(); }, spawnObstacle, spawnCrossing, clearObstacles,
