@@ -152,7 +152,7 @@
     <h3>Dogs</h3><p>Shiba Inu by Quaternius · CC0 · <span class="u">poly.pizza/m/y4wdQpg767</span><br>Husky by Quaternius · CC0 · <span class="u">poly.pizza/m/wcWiuEqwzq</span></p>
     <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
     <h3>Music</h3><p id="gMusicCredits"></p>
-    <h3>Sound effects</h3><p>Made in code for this game (Web Audio); ollie and landing recorded by the author</p>
+    <h3>Sound effects</h3><p>Made in code for this game (Web Audio); wheels, pop and landing recorded by the author</p>
     <h3>Ambience from Freesound</h3><p>All CC0 · <span class="u">freesound.org</span><br>Distant Waves on Beach: bdgdoherty<br>bathing beach atmo: Garuda1982<br>Seagull single call: steaq<br>seagulls-mateo: smedloidian<br>Single Dog Bark: kwahmah_02<br>Dog Barking Distance - 1: SpaceJoe</p>
     <h3>Global leaderboard</h3><p>Hosted on Cloudflare Workers and D1. Scores are stored online with a name, score and date only.</p>
     <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
@@ -230,14 +230,14 @@ const GAME = {
            sfx: { volume: 0.7,             // default SFX volume ([ / ] change it in 5% steps; saved with the music settings). Ambience follows it too
                   maxVoices: 28, performers: { max: 3, maxVoices: 40, level: 0.32, circleLevel: 0.64 },   // voice caps (sounds over the cap are skipped); loudness at 4 m of a lane performer / a drum circle off the lanes
                   positional: { refDistance: 4, rolloff: 1.1 },   // PannerNode 'inverse' distance model for bells, dogs, the camera flash and performers
-                  roll: { rumble: 0.08, rumbleHz: 140, speedLo: 4, speedHi: 30 },   // wheels: a low rumble, louder from speedLo to speedHi m/s, silent in the air
-                  clips: { pop: 0.5, land: 0.5 },   // levels of the recorded ollie pop and landing (assets/sfx/ollie-*.mp3)
+                  roll: { level: 0.55, rate: [0.9, 1.15], loopFade: 0.3, rumble: 0.08, rumbleHz: 140, speedLo: 4, speedHi: 30 },   // wheels: the recorded pavement loop, louder and faster (playback rate) from speedLo to speedHi m/s, silent in the air; rumble = the synthesized stand-in until it loads
+                  clips: { pop: 0.9, land: 0.5 },   // levels of the recorded pop and landing (assets/sfx/trick-*.mp3)
                   charge: { level: 0.035, from: 196, to: 523 },   // the tone while Space is held: Hz at no crouch → full crouch
                   success: { base: 587, maxSteps: 12, level: 0.09 },   // landed-trick chime: Hz at combo 1, +1 semitone per combo step up to maxSteps
                   lowHealth: { every: 1.1, level: 0.16 },   // heartbeat under 30% health: s between beats
                   bell: 0.14, bark: 0.9, flash: 0.44, jingle: 0.1, sting: { level: 0.15, duckDb: 4, duckHold: 1.4 },   // the game-over sting ducks the music more and for longer
                   ambience: { folder: 'assets/sfx/', level: 0.55, loopFade: 2, gulls: 0.35, barks: 0.12,
-                    files: { pop: 'ollie-pop.mp3', land: 'ollie-land.mp3', waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
+                    files: { roll: 'roll-pavement.mp3', pop: 'trick-pop.mp3', land: 'trick-land.mp3', waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
                     // per weather phase, in PHASES order (the surf is kept barely audible), blended with the lighting: loop levels, waves low-pass (Hz: low = muffled), one-shot rates per minute
                     phases: [
                       { waves: 0.1, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, barksPerMin: 0.8 },     // overcast fog: faint muffled surf, few gulls

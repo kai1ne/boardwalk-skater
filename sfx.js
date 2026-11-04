@@ -62,11 +62,14 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
   let log = null;   // test hook: positions of the positioned one-shots
 
   // ---------------------------------------------------------------- continuous: wheels and the charge tone
-  // wheels: a low rumble of noise following speed (the band-passed hiss that sounded like running water is gone);
-  // it is cut while the board is off the ground
-  const R = X.roll, roll = { src: ctx.createBufferSource(), lp: ctx.createBiquadFilter(), rg: ctx.createGain() };
+  // wheels: the recorded skateboard-on-pavement loop (assets/sfx/roll-pavement.mp3), louder and a touch faster with
+  // speed; a low noise rumble stands in until the file has loaded. Cut the moment the board leaves the ground, back on landing
+  const R = X.roll, roll = { src: ctx.createBufferSource(), lp: ctx.createBiquadFilter(), rg: ctx.createGain(), rec: null, recG: null, on: false };
   roll.src.buffer = noiseBuf; roll.src.loop = true; roll.lp.type = 'lowpass'; roll.lp.frequency.value = R.rumbleHz; roll.lp.Q.value = 0.7;
   roll.rg.gain.value = 0; roll.src.connect(roll.lp).connect(roll.rg).connect(out); roll.src.start();
+  function startRollLoop(b) { roll.rec = ctx.createBufferSource(); roll.rec.buffer = makeLoop(b, R.loopFade); roll.rec.loop = true;
+    roll.recG = ctx.createGain(); roll.recG.gain.value = 0; roll.rec.connect(roll.recG).connect(out); roll.rec.start(ctx.currentTime, Math.random() * roll.rec.buffer.duration);
+    roll.rg.gain.cancelScheduledValues(ctx.currentTime); roll.rg.gain.setTargetAtTime(0, ctx.currentTime, 0.05); }
   // charge: a soft triangle whose pitch rises continuously with the crouch while Space is held
   const C = X.charge, charge = { osc: ctx.createOscillator(), lp: ctx.createBiquadFilter(), g: ctx.createGain(), on: false };
   charge.osc.type = 'triangle'; charge.osc.frequency.value = C.from; charge.lp.type = 'lowpass'; charge.lp.frequency.value = 1400; charge.g.gain.value = 0;
@@ -140,6 +143,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     bed.wavesLP = ctx.createBiquadFilter(); bed.wavesLP.type = 'lowpass'; bed.wavesLP.Q.value = 0.5; bed.wavesLP.frequency.value = 1000; bed.wavesLP.connect(amb);
     if (buf.waves) bed.waves = loop(buf.waves, bed.wavesLP);
     if (buf.crowd) bed.crowd = loop(buf.crowd, amb);
+    if (buf.roll) startRollLoop(buf.roll);
     const now = ctx.currentTime; bed.gullT = now + rand(2, 6); bed.barkT = now + rand(15, 40); bed.ready = true;
   }
   function oneShot(b, dest, gain, rate = 1, t = ctx.currentTime) { if (!b || !take('fx', 1)) return; const s = ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; const g = ctx.createGain(); g.gain.value = gain; s.connect(g).connect(dest); s.start(t); s.onended = () => { pools.fx.n--; g.disconnect(); }; }
@@ -164,8 +168,11 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     // the wheels: steered 20× a second, plus straight away when they leave or touch the ground
     paramT -= dt; const wasRolling = roll.on; roll.on = rolling;
     if (paramT <= 0 || wasRolling !== rolling) { paramT = 0.05;
-      const v = clamp((speed - R.speedLo) / (R.speedHi - R.speedLo), 0, 1), on = rolling && speed > 0.3 ? 1 : 0, tau = wasRolling !== rolling ? 0.02 : 0.08;
-      glide(roll.rg.gain, on * R.rumble * (0.3 + 0.7 * v), tau); }
+      const v = clamp((speed - R.speedLo) / (R.speedHi - R.speedLo), 0, 1), on = rolling && speed > 0.3 ? 1 : 0;
+      const g = roll.recG ? roll.recG.gain : roll.rg.gain, target = roll.recG ? on * R.level * (0.55 + 0.45 * v) : on * R.rumble * (0.3 + 0.7 * v);
+      // take-off and touch-down jump straight to the new level (a few ms, just enough not to click); speed changes glide
+      if (wasRolling !== rolling) { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(target, now, 0.006); } else glide(g, target, 0.08);
+      if (roll.rec) glide(roll.rec.playbackRate, R.rate[0] + (R.rate[1] - R.rate[0]) * v, 0.15); }
     // the charge tone follows the crouch every frame (it has to feel continuous)
     if (chargeF >= 0) { glide(charge.osc.frequency, C.from * Math.pow(C.to / C.from, chargeF), 0.02); if (!charge.on) { charge.on = true; glide(charge.g.gain, C.level, 0.03); } }
     else if (charge.on) { charge.on = false; glide(charge.g.gain, 0, 0.02); }
@@ -230,7 +237,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     jingle() { if (!take('fx', 5)) return; const t = now(); [523, 659, 784, 1047].forEach((f, i) => tone(out, t + i * 0.085, { wave: 'triangle', f, a: 0.004, d: i === 3 ? 0.5 : 0.16, peak: X.jingle, lp: 5000 })); tone(out, t + 0.255, { f: 2094, a: 0.004, d: 0.4, peak: X.jingle * 0.3 }); duck(X.sting.duckDb, 0.6); },
     get ambienceReady() { return !!bed.ready; },
     // test hooks
-    get debug() { return { voices: pools.fx.n, perfVoices: pools.perf.n, dropped, performers: act.map((h) => ({ kind: h.kind, x: +h.p.positionX.value.toFixed(2), z: +h.p.positionZ.value.toFixed(2) })), mix: bed.w && { ...bed.w }, roll: { gain: roll.rg.gain.value }, charge: { on: charge.on, hz: charge.osc.frequency.value } }; },
+    get debug() { return { voices: pools.fx.n, perfVoices: pools.perf.n, dropped, performers: act.map((h) => ({ kind: h.kind, x: +h.p.positionX.value.toFixed(2), z: +h.p.positionZ.value.toFixed(2) })), mix: bed.w && { ...bed.w }, roll: { gain: (roll.recG || roll.rg).gain.value, recorded: !!roll.recG }, charge: { on: charge.on, hz: charge.osc.frequency.value } }; },
     logPositions(on) { log = on ? [] : null; }, get positions() { return log; }, loaded: ambLoaded,
   };
   return fx;
