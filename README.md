@@ -132,7 +132,7 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `sfx.js` — the sound effects (Web Audio synthesis, capped voices, positional sounds) and the ambience bed, mixed per
   weather phase (`GAME.audio.sfx` in the HTML holds every level and the per-phase mix).
 - `assets/sfx/` — the ambience recordings: mono 64 kbps MP3s, about 660 KB in all (sources in `CREDITS.md`).
-- `icon.svg`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
+- `icon.png`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
   (Open Graph / X card tags in both HTML pages).
 - `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).
 - `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
