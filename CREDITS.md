@@ -101,9 +101,10 @@ License: https://creativecommons.org/publicdomain/zero/1.0/
 
 ## Sound effects
 
-Synthesized in code at runtime (`sfx.js`, Web Audio): wheels, push, pop, flip, landing, trick chime, bail, hits, slip,
+The ollie pop and the landing (`assets/sfx/ollie-pop.mp3`, `assets/sfx/ollie-land.mp3`) are cut from a recording supplied by
+the game's author. Everything else is synthesized in code at runtime (`sfx.js`, Web Audio): the wheels' rumble, push, flip, trick chime, bail, hits, slip,
 close-call whoosh, heartbeat, bicycle bell, camera shutter, menu clicks, countdown beeps, game-over sting, top-5 jingle
-the performers' music and the drum circles' hand drums. No sound files.
+the performers' music and the drum circles' hand drums.
 
 ## Procedural (canvas-generated, original)
 

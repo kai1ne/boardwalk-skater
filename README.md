@@ -34,8 +34,8 @@ loads from jsDelivr through an import map.
 Sound starts with the first key press (browsers don't allow sound before one), pauses and resumes with the game, and
 fades in and out. The mute and volume settings are saved in this browser.
 
-Sound effects are synthesized in code (`sfx.js`): wheels that follow your speed, the push-off, the pop, a flip whoosh
-(the same for every trick), the landing, a chime that climbs with the combo when a trick lands, the bail, hits, slips,
+Sound effects are synthesized in code (`sfx.js`), apart from a recorded ollie pop and landing: a wheel rumble that follows
+your speed and goes quiet in the air, the push-off, a flip whoosh (the same for every trick), a chime that climbs with the combo when a trick lands, the bail, hits, slips,
 close calls, a soft heartbeat under 30% health, menu clicks, the game-over sting and a jingle when you make the top 5.
 Holding Space plays a quiet tone that rises with the crouch. Cyclists' bells, barking dogs, the influencer's camera and
 the performers' music and the hand drums of the drum circles beside the boardwalk are placed where they are (Web Audio PannerNode). Under it all, an ambience bed of surf, gulls,

@@ -62,13 +62,11 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
   let log = null;   // test hook: positions of the positioned one-shots
 
   // ---------------------------------------------------------------- continuous: wheels and the charge tone
-  // wheels: noise through a band-pass (the hiss of urethane on concrete) plus a low rumble, both following speed;
-  // a slow sine swells the hiss once per paving joint, so the joints go by faster as the speed rises
-  const R = X.roll, roll = { src: ctx.createBufferSource(), bp: ctx.createBiquadFilter(), lp: ctx.createBiquadFilter(), g: ctx.createGain(), rg: ctx.createGain(), lfo: ctx.createOscillator(), depth: ctx.createGain() };
-  roll.src.buffer = noiseBuf; roll.src.loop = true; roll.bp.type = 'bandpass'; roll.bp.Q.value = 0.8; roll.bp.frequency.value = R.hiss[0]; roll.lp.type = 'lowpass'; roll.lp.frequency.value = R.rumbleHz; roll.lp.Q.value = 0.7;
-  roll.g.gain.value = 0; roll.rg.gain.value = 0; roll.depth.gain.value = 0; roll.lfo.frequency.value = 2;
-  roll.src.connect(roll.bp).connect(roll.g).connect(out); roll.src.connect(roll.lp).connect(roll.rg).connect(out); roll.lfo.connect(roll.depth).connect(roll.g.gain);
-  roll.src.start(); roll.lfo.start();
+  // wheels: a low rumble of noise following speed (the band-passed hiss that sounded like running water is gone);
+  // it is cut while the board is off the ground
+  const R = X.roll, roll = { src: ctx.createBufferSource(), lp: ctx.createBiquadFilter(), rg: ctx.createGain() };
+  roll.src.buffer = noiseBuf; roll.src.loop = true; roll.lp.type = 'lowpass'; roll.lp.frequency.value = R.rumbleHz; roll.lp.Q.value = 0.7;
+  roll.rg.gain.value = 0; roll.src.connect(roll.lp).connect(roll.rg).connect(out); roll.src.start();
   // charge: a soft triangle whose pitch rises continuously with the crouch while Space is held
   const C = X.charge, charge = { osc: ctx.createOscillator(), lp: ctx.createBiquadFilter(), g: ctx.createGain(), on: false };
   charge.osc.type = 'triangle'; charge.osc.frequency.value = C.from; charge.lp.type = 'lowpass'; charge.lp.frequency.value = 1400; charge.g.gain.value = 0;
@@ -167,9 +165,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     paramT -= dt; const wasRolling = roll.on; roll.on = rolling;
     if (paramT <= 0 || wasRolling !== rolling) { paramT = 0.05;
       const v = clamp((speed - R.speedLo) / (R.speedHi - R.speedLo), 0, 1), on = rolling && speed > 0.3 ? 1 : 0, tau = wasRolling !== rolling ? 0.02 : 0.08;
-      glide(roll.g.gain, on * R.level * (0.35 + 0.65 * Math.pow(v, 0.7)), tau); glide(roll.rg.gain, on * R.rumble * (0.3 + 0.7 * v), tau);
-      glide(roll.bp.frequency, R.hiss[0] * Math.pow(R.hiss[1] / R.hiss[0], v), 0.1);
-      glide(roll.lfo.frequency, clamp(speed / R.jointSpacing, 0.5, R.jointMaxHz), 0.1); glide(roll.depth.gain, on * R.level * R.jointDepth, tau); }
+      glide(roll.rg.gain, on * R.rumble * (0.3 + 0.7 * v), tau); }
     // the charge tone follows the crouch every frame (it has to feel continuous)
     if (chargeF >= 0) { glide(charge.osc.frequency, C.from * Math.pow(C.to / C.from, chargeF), 0.02); if (!charge.on) { charge.on = true; glide(charge.g.gain, C.level, 0.03); } }
     else if (charge.on) { charge.on = false; glide(charge.g.gain, 0, 0.02); }
@@ -181,18 +177,20 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
   function heartbeat(t) { const H = X.lowHealth; if (!take('fx', 2)) return; tone(out, t, { f: 62, f2: 48, a: 0.01, d: 0.16, peak: H.level, lp: 200 }); tone(out, t + 0.2, { f: 56, f2: 44, a: 0.01, d: 0.18, peak: H.level * 0.7, lp: 200 }); }
 
   // ---------------------------------------------------------------- the one-shots
+  // a recorded clip (the ollie pop and the landing), once its file has loaded; false means fall back to the synthesized one
+  const clip = (b, level) => { if (!b) return false; oneShot(b, out, level, 0.97 + Math.random() * 0.06); return true; };
   const now = () => ctx.currentTime + 0.005;
   const fx = {
     frame, performer, place, release,
     // feet pushing on the concrete as he gets (back) on the board
     push() { if (!take('fx', 3)) return; const t = now(); noise(out, t, { f: 1100, q: 0.9, a: 0.015, d: 0.12, peak: 0.16 }); noise(out, t, { type: 'lowpass', f: 260, a: 0.01, d: 0.1, peak: 0.2 }); noise(out, t + 0.48, { f: 1000, q: 0.9, a: 0.015, d: 0.1, peak: 0.11 }); },
     // the tail snapping on the ground: a crack, a wooden knock and a little body; bigger jumps pop a bit harder
-    pop(f = 0.5) { if (!take('fx', 3)) return; const t = now(), k = 0.65 + 0.35 * f;
+    pop(f = 0.5) { if (clip(buf.pop, X.clips.pop * (0.75 + 0.25 * f))) return; if (!take('fx', 3)) return; const t = now(), k = 0.65 + 0.35 * f;
       noise(out, t, { type: 'highpass', f: 2600, q: 0.7, a: 0.0015, d: 0.025, peak: 0.26 * k }); noise(out, t, { f: 950, q: 6, a: 0.001, d: 0.07, peak: 0.3 * k }); tone(out, t, { f: 170, f2: 70, sweep: 0.07, a: 0.002, d: 0.08, peak: 0.34 * k }); },
     // the board turning under his feet: one airy whoosh, the same for every trick
     flip() { if (!take('fx', 1)) return; noise(out, now(), { f: 500, f2: 2100, sweep: 0.12, q: 1.8, a: 0.09, d: 0.2, peak: 0.16 }); },
     // wheels and deck hitting the ground; heavier from higher up
-    land(h = 0.5) { if (!take('fx', 4)) return; const t = now(), k = 0.6 + 0.4 * h;
+    land(h = 0.5) { if (clip(buf.land, X.clips.land * (0.7 + 0.3 * h))) return; if (!take('fx', 4)) return; const t = now(), k = 0.6 + 0.4 * h;
       tone(out, t, { f: 120, f2: 45, sweep: 0.12, a: 0.002, d: 0.14, peak: 0.42 * k }); noise(out, t, { type: 'lowpass', f: 520, a: 0.002, d: 0.08, peak: 0.26 * k });
       noise(out, t, { f: 2100, q: 3, a: 0.001, d: 0.03, peak: 0.15 * k }); noise(out, t + 0.028, { f: 1900, q: 3, a: 0.001, d: 0.03, peak: 0.12 * k }); },
     // a landed trick: a short bright two-note chime, a semitone higher for each step of the combo
@@ -232,7 +230,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     jingle() { if (!take('fx', 5)) return; const t = now(); [523, 659, 784, 1047].forEach((f, i) => tone(out, t + i * 0.085, { wave: 'triangle', f, a: 0.004, d: i === 3 ? 0.5 : 0.16, peak: X.jingle, lp: 5000 })); tone(out, t + 0.255, { f: 2094, a: 0.004, d: 0.4, peak: X.jingle * 0.3 }); duck(X.sting.duckDb, 0.6); },
     get ambienceReady() { return !!bed.ready; },
     // test hooks
-    get debug() { return { voices: pools.fx.n, perfVoices: pools.perf.n, dropped, performers: act.map((h) => ({ kind: h.kind, x: +h.p.positionX.value.toFixed(2), z: +h.p.positionZ.value.toFixed(2) })), mix: bed.w && { ...bed.w }, roll: { gain: roll.g.gain.value, hz: roll.bp.frequency.value }, charge: { on: charge.on, hz: charge.osc.frequency.value } }; },
+    get debug() { return { voices: pools.fx.n, perfVoices: pools.perf.n, dropped, performers: act.map((h) => ({ kind: h.kind, x: +h.p.positionX.value.toFixed(2), z: +h.p.positionZ.value.toFixed(2) })), mix: bed.w && { ...bed.w }, roll: { gain: roll.rg.gain.value }, charge: { on: charge.on, hz: charge.osc.frequency.value } }; },
     logPositions(on) { log = on ? [] : null; }, get positions() { return log; }, loaded: ambLoaded,
   };
   return fx;
