@@ -163,16 +163,40 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
 
   // ---------------------------------------------------------------- per frame (scalars only, no allocations)
   let paramT = 0, beatT = 0;
+  // the wheels' stutter after a stumble / slip / fall (see frame): t0 = start, chat = s of chatter, rec0 = when the wind-up began
+  const stut = { t0: -1, chat: 0, rec0: -1, kind: '' };
+  function stutter(kind) {
+    const now = ctx.currentTime, g = roll.recG ? roll.recG.gain : roll.rg.gain, lvl = g.value;
+    stut.t0 = now; stut.rec0 = -1; stut.kind = kind; stut.chat = 0;
+    g.cancelScheduledValues(now); g.setValueAtTime(lvl, now);
+    if (roll.on && lvl > 0.001) {   // only if the wheels were actually rolling: a stop, a skip or two of the wheels catching, then quiet
+      const S = R.stutter[kind] || R.stutter.stumble; let t = now;
+      for (const [dur, k] of S) { g.linearRampToValueAtTime(lvl * k, t + 0.008); t += dur; g.setValueAtTime(lvl * k, t - 0.004); }
+      g.linearRampToValueAtTime(0, t + 0.01); stut.chat = t + 0.01 - now;
+    } else g.setTargetAtTime(0, now, 0.01);
+  }
   function frame(dt, speed, rolling, chargeF, lowHP, phaseI, phaseB) {
     const now = ctx.currentTime;
     // the wheels: steered 20× a second, plus straight away when they leave or touch the ground
     paramT -= dt; const wasRolling = roll.on; roll.on = rolling;
-    if (paramT <= 0 || wasRolling !== rolling) { paramT = 0.05;
-      const v = clamp((speed - R.speedLo) / (R.speedHi - R.speedLo), 0, 1), on = rolling && speed > 0.3 ? 1 : 0;
-      const g = roll.recG ? roll.recG.gain : roll.rg.gain, target = roll.recG ? on * R.level * (0.55 + 0.45 * v) : on * R.rumble * (0.3 + 0.7 * v);
+    const v = clamp((speed - R.speedLo) / (R.speedHi - R.speedLo), 0, 1), on = rolling && speed > 0.3 ? 1 : 0;
+    const g = roll.recG ? roll.recG.gain : roll.rg.gain, target = roll.recG ? on * R.level * (0.55 + 0.45 * v) : on * R.rumble * (0.3 + 0.7 * v);
+    const rate = R.rate[0] + (R.rate[1] - R.rate[0]) * v;
+    if (stut.t0 >= 0) {
+      // a stumble, slip or fall: the scheduled chatter plays out, the wheels stay quiet while he's off the board, then they
+      // wind back up (level and pitch) once he's rolling again, like the board picking its momentum back up
+      const since = now - stut.t0;
+      if (since >= stut.chat) {
+        if (stut.rec0 < 0) { if (on) stut.rec0 = now; else if (since < stut.chat + 0.05) { g.cancelScheduledValues(now); g.setTargetAtTime(0, now, 0.01); } }
+        if (stut.rec0 >= 0) { const u = clamp((now - stut.rec0) / R.recover, 0, 1), e = u * u * (3 - 2 * u);
+          g.setTargetAtTime(target * e, now, 0.02); if (roll.rec) roll.rec.playbackRate.setTargetAtTime(rate * (R.recoverRate + (1 - R.recoverRate) * e), now, 0.02);
+          if (u >= 1 || stut.kind === 'crash') stut.t0 = -1; }
+      }
+      paramT = 0;
+    } else if (paramT <= 0 || wasRolling !== rolling) { paramT = 0.05;
       // take-off and touch-down jump straight to the new level (a few ms, just enough not to click); speed changes glide
       if (wasRolling !== rolling) { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(target, now, 0.006); } else glide(g, target, 0.08);
-      if (roll.rec) glide(roll.rec.playbackRate, R.rate[0] + (R.rate[1] - R.rate[0]) * v, 0.15); }
+      if (roll.rec) glide(roll.rec.playbackRate, rate, 0.15); }
     // the charge tone follows the crouch every frame (it has to feel continuous)
     if (chargeF >= 0) { glide(charge.osc.frequency, C.from * Math.pow(C.to / C.from, chargeF), 0.02); if (!charge.on) { charge.on = true; glide(charge.g.gain, C.level, 0.03); } }
     else if (charge.on) { charge.on = false; glide(charge.g.gain, 0, 0.02); }
@@ -188,7 +212,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
   const clip = (b, level) => { if (!b) return false; oneShot(b, out, level, 0.97 + Math.random() * 0.06); return true; };
   const now = () => ctx.currentTime + 0.005;
   const fx = {
-    frame, performer, place, release,
+    frame, performer, place, release, stutter,
     // feet pushing on the concrete as he gets (back) on the board
     push() { if (!take('fx', 3)) return; const t = now(); noise(out, t, { f: 1100, q: 0.9, a: 0.015, d: 0.12, peak: 0.16 }); noise(out, t, { type: 'lowpass', f: 260, a: 0.01, d: 0.1, peak: 0.2 }); noise(out, t + 0.48, { f: 1000, q: 0.9, a: 0.015, d: 0.1, peak: 0.11 }); },
     // the tail snapping on the ground: a crack, a wooden knock and a little body; bigger jumps pop a bit harder
@@ -244,4 +268,4 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
 }
 
 // the same calls, doing nothing, for before the first key press (the browser won't start audio until then)
-export const SILENT_SFX = { frame() {}, performer: () => null, place() {}, release() {}, push() {}, pop() {}, flip() {}, land() {}, success() {}, bail() {}, hit() {}, slip() {}, nearMiss() {}, bell() {}, bark() {}, flash() {}, click() {}, countdown() {}, gameOver() {}, jingle() {}, ambienceReady: false };
+export const SILENT_SFX = { frame() {}, stutter() {}, performer: () => null, place() {}, release() {}, push() {}, pop() {}, flip() {}, land() {}, success() {}, bail() {}, hit() {}, slip() {}, nearMiss() {}, bell() {}, bark() {}, flash() {}, click() {}, countdown() {}, gameOver() {}, jingle() {}, ambienceReady: false };

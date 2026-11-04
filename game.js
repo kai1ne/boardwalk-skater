@@ -425,7 +425,7 @@ export function createGame(ctx) {
     ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens(); audio.fx.push();
   }
   function gameOver() {
-    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false; audio.fx.gameOver();
+    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false; audio.fx.gameOver(); audio.fx.stutter('crash');
     renderDiscoveries(); st.score = Math.floor(st.score); entering = false;
     if (!bot.on && st.score > save.best) { save.best = st.score; st.newBest = true; writeSave(); }   // "Your best" is this browser's own record
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = save.best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
@@ -502,18 +502,18 @@ export function createGame(ctx) {
     save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
   }
   function bail() {
-    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); audio.fx.bail(); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); audio.fx.bail(); audio.fx.stutter('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
   function pressLane(d) { if (st.mode !== 'over') sk.queue.push(d); }   // applied to the target lane next frame
   function slip() {
     if (sk.mode === 'slip' || sk.mode === 'crash') return;
-    sk.slipSpeed = sk.speed; sk.slipApplied = false; setMode('slip');
+    sk.slipSpeed = sk.speed; sk.slipApplied = false; setMode('slip'); audio.fx.stutter('slip');
   }
   function hit(dmg = HP.hit, type = '') {
     if (st.mode !== 'playing') return false;   // every obstacle you run into costs its own damage (each one can only hit once)
-    audio.fx.hit(type === 'cones'); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
+    audio.fx.hit(type === 'cones'); audio.fx.stutter('stumble'); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
   }
   function land() {
     sk.y = 0; sk.vy = 0;

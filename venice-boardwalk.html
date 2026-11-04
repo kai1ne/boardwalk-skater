@@ -230,7 +230,9 @@ const GAME = {
            sfx: { volume: 0.7,             // default SFX volume ([ / ] change it in 5% steps; saved with the music settings). Ambience follows it too
                   maxVoices: 28, performers: { max: 3, maxVoices: 40, level: 0.32, circleLevel: 0.64 },   // voice caps (sounds over the cap are skipped); loudness at 4 m of a lane performer / a drum circle off the lanes
                   positional: { refDistance: 4, rolloff: 1.1 },   // PannerNode 'inverse' distance model for bells, dogs, the camera flash and performers
-                  roll: { level: 0.55, rate: [0.9, 1.15], loopFade: 0.3, rumble: 0.08, rumbleHz: 140, speedLo: 4, speedHi: 30 },   // wheels: the recorded pavement loop, louder and faster (playback rate) from speedLo to speedHi m/s, silent in the air; rumble = the synthesized stand-in until it loads
+                  roll: { level: 0.55, rate: [0.9, 1.15], loopFade: 0.3, recover: 0.75, recoverRate: 0.6,   // recover: s the wheels take to wind back up after a stumble/slip/fall, starting at recoverRate × the playback rate
+                    stutter: { stumble: [[0.05, 0], [0.04, 0.6], [0.07, 0], [0.04, 0.35]], slip: [[0.03, 0.5], [0.05, 0], [0.03, 0.3]], bail: [[0.04, 0], [0.03, 0.4]], crash: [[0.04, 0], [0.03, 0.3]] },   // chatter as [s, level] steps before the wheels go quiet
+                    rumble: 0.08, rumbleHz: 140, speedLo: 4, speedHi: 30 },   // wheels: the recorded pavement loop, louder and faster (playback rate) from speedLo to speedHi m/s, silent in the air; rumble = the synthesized stand-in until it loads
                   clips: { pop: 0.9, land: 0.5 },   // levels of the recorded pop and landing (assets/sfx/trick-*.mp3)
                   charge: { level: 0.035, from: 196, to: 523 },   // the tone while Space is held: Hz at no crouch → full crouch
                   success: { base: 587, maxSteps: 12, level: 0.09 },   // landed-trick chime: Hz at combo 1, +1 semitone per combo step up to maxSteps
