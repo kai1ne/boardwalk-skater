@@ -152,6 +152,8 @@
     <h3>Dogs</h3><p>Shiba Inu by Quaternius · CC0 · <span class="u">poly.pizza/m/y4wdQpg767</span><br>Husky by Quaternius · CC0 · <span class="u">poly.pizza/m/wcWiuEqwzq</span></p>
     <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
     <h3>Music</h3><p id="gMusicCredits"></p>
+    <h3>Sound effects</h3><p>Made in code for this game (Web Audio)</p>
+    <h3>Ambience from Freesound</h3><p>All CC0 · <span class="u">freesound.org</span><br>Distant Waves on Beach: bdgdoherty<br>bathing beach atmo: Garuda1982<br>Seagull single call: steaq<br>seagulls-mateo: smedloidian<br>Long Distant Foghorn: Danjocross<br>Single Dog Bark: kwahmah_02<br>Dog Barking Distance - 1: SpaceJoe</p>
     <h3>Global leaderboard</h3><p>Hosted on Cloudflare Workers and D1. Scores are stored online with a name, score and date only.</p>
     <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
     <h3>Made in code for this game</h3><p>Buildings, signs, murals, clothing, skateboards, bikes, cars, props, birds, sky and all other procedural art. All business names, tags and ads are invented.</p>
@@ -224,7 +226,23 @@ const GAME = {
            crossfade: 3,                   // s the next track overlaps the end of the current one
            pauseFade: 0.25, resumeFade: 0.4,   // s fades when the game pauses / resumes
            limiter: { threshold: -1 },     // dBFS where the master limiter catches peaks
-           duck: { db: 3, attack: 0.05, hold: 0.3, release: 0.6 } },   // dip under sound effects (none yet)
+           duck: { db: 3, attack: 0.05, hold: 0.3, release: 0.6 },   // music dips this many dB (2–4 is gentle) under landed tricks, bails, hits and slips
+           sfx: { volume: 0.7,             // default SFX volume ([ / ] change it in 5% steps; saved with the music settings). Ambience follows it too
+                  maxVoices: 28, performers: { max: 2, maxVoices: 24, level: 0.16 },   // voice caps (sounds over the cap are skipped); performers' loudness at 4 m
+                  positional: { refDistance: 4, rolloff: 1.1 },   // PannerNode 'inverse' distance model for bells, dogs, the camera flash and performers
+                  roll: { level: 0.05, rumble: 0.08, rumbleHz: 140, hiss: [380, 1500], speedLo: 4, speedHi: 30, jointSpacing: 1.6, jointMaxHz: 22, jointDepth: 0.35 },   // wheels: hiss band (Hz) from speedLo to speedHi m/s, one swell per paving joint
+                  charge: { level: 0.035, from: 196, to: 523 },   // the tone while Space is held: Hz at no crouch → full crouch
+                  success: { base: 587, maxSteps: 12, level: 0.09 },   // landed-trick chime: Hz at combo 1, +1 semitone per combo step up to maxSteps
+                  lowHealth: { every: 1.1, level: 0.16 },   // heartbeat under 30% health: s between beats
+                  bell: 0.07, bark: 0.45, jingle: 0.1, sting: { level: 0.15, duckDb: 4, duckHold: 1.4 },   // the game-over sting ducks the music more and for longer
+                  ambience: { folder: 'assets/sfx/', level: 0.55, loopFade: 2, gulls: 0.35, barks: 0.12, foghornLevel: 0.45, foghornEvery: [26, 44],
+                    files: { waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', foghorn: 'foghorn.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
+                    // per weather phase, in PHASES order, blended with the lighting: loop levels, waves low-pass (Hz: low = muffled), one-shot rates per minute
+                    phases: [
+                      { waves: 0.75, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, foghorn: 1, barksPerMin: 0.8 },     // overcast fog: muffled surf, a far foghorn, few gulls
+                      { waves: 0.6, wavesLP: 12000, crowd: 0.55, gullsPerMin: 7, foghorn: 0, barksPerMin: 1.2 },      // sunny: surf, gulls, a busy crowd
+                      { waves: 0.65, wavesLP: 6000, crowd: 0.3, gullsPerMin: 4, foghorn: 0, barksPerMin: 0.8 },       // golden hour: a softer crowd, surf
+                      { waves: 0.6, wavesLP: 3500, crowd: 0.1, gullsPerMin: 0.6, foghorn: 0, barksPerMin: 0.6 } ] } } },   // blue hour: a quiet crowd, surf
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)

@@ -37,6 +37,7 @@ export function createGame(ctx) {
   const LANE_X = Array.from({ length: L.count }, (_, i) => (i - (L.count - 1) / 2) * L.width);
   const $ = (id) => document.getElementById(id);
   const audio = createAudio({ tracks: MUSIC_TRACKS, cfg: G.audio });
+  // sound effects: audio.fx (sfx.js), silent no-ops until the first key press
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
     title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], lbNotes: [$('gLbNote'), $('gOverLbNote')], lbMsg: $('gLbMsg'), lbRetry: $('gLbRetry'), entryHint: $('gEntryHint'), newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
@@ -60,7 +61,7 @@ export function createGame(ctx) {
         if (Array.isArray(d.scores)) save.scores = d.scores; } }   // the old local table, left alone
     if (storageOK) try { localStorage.setItem(SV.key + '.test', '1'); localStorage.removeItem(SV.key + '.test'); } catch (e) { storageOK = false; }
   })();
-  let entering = false;
+  let entering = false, wasAsking = false;
 
   // ---- global top 5: fetched on the title screen and at game over (5 s timeout, one retry); the last good board is
   // cached and shown as "offline: last known" when the server can't be reached. Nothing is ever queued for later.
@@ -266,7 +267,7 @@ export function createGame(ctx) {
         o.parts = [part(G.obstacles.ped), part(Od, side, dz), part(Oc, sg * (0.3 + (Math.abs(side) - 0.3 - Od.w / 2) / 2), dz / 2, Math.abs(side) - 0.3 - Od.w / 2)];
         o.lanes.push(opt.dogLane); meet(e); break; }
       case 'performer': {   // busker on a rug, or breakdancers on cardboard, in an outer lane facing the oncoming skater, with a few people watching
-        const act = ['guitar', 'drum', 'piano', 'breakdance', 'breakdance'][Math.floor(Math.random() * 5)], back = z - G.obstacles.performer.d / 2 + 0.6;
+        const act = ['guitar', 'drum', 'piano', 'breakdance', 'breakdance'][Math.floor(Math.random() * 5)], back = z - G.obstacles.performer.d / 2 + 0.6; o.act = act;   // o.act: what they play (sound)
         if (act === 'breakdance') {   // one dancer on a power move in the middle of the cardboard, a partner toprocking behind, the crowd in front
           o.mesh = getMesh('stage'); o.meshType = 'stage'; o.mesh.rotation.y = o.x > 0 ? 0 : Math.PI;   // the boombox sits on the boardwalk-edge side
           if (chars) { const move = ['headspin', 'windmill', 'footwork'][Math.floor(Math.random() * 3)], c = z - 0.2;
@@ -312,6 +313,7 @@ export function createGame(ctx) {
       else o.mesh = getMesh('ped'); }
     if (o.active && !inside && Math.sign(o.x) === o.dirX) { o.active = false; o.exited = true; o.done = true; if (o.ped) { chars.removeGameAgent(o.ped); o.ped = null; } if (o.mesh) { freeMesh('ped', o.mesh); o.mesh = null; } }
     if (o.ped) { o.ped.x = o.x; o.ped.z = o.z; } if (o.mesh) o.mesh.position.set(o.x, 0, o.z);
+    if (o.active && o.type === 'crossBike' && !o.rang && S.z - o.z < 30 && S.z - o.z > 3) { o.rang = true; audio.fx.bell(o.x - sk.x, o.z - S.z); }   // a crossing cyclist rings as they come over
   }
   // per-frame behaviour of the moving obstacles
   function updateObstacle(o, dt) {
@@ -334,9 +336,14 @@ export function createGame(ctx) {
     if (o.type === 'vehicle' && o.mesh) { o.mesh.position.set(o.x, 0, o.z); const v = o.mesh.userData.veh; for (const w of v.wheels) w.rotation.x += o.vz * dt / v.r; }
     // an influencer's flash fires as you pass close
     const dz = S.z - o.z;
-    if (o.type === 'selfie' && !o.flashed && o.ped && Math.abs(dz) < SP.flashDist && Math.abs(o.x - sk.x) < 2.6) { o.flashed = true; chars.cue(o.ped, 'flash'); }
+    if (o.type === 'selfie' && !o.flashed && o.ped && Math.abs(dz) < SP.flashDist && Math.abs(o.x - sk.x) < 2.6) { o.flashed = true; chars.cue(o.ped, 'flash'); audio.fx.flash(o.x - sk.x, o.z - S.z); }
+    // sounds placed where they happen: a cyclist's bell, a dog barking at the skater, the performers' music
+    if (o.type === 'bike' && !o.rang && dz < 26 && dz > 4) { o.rang = true; if (Math.random() < 0.75) audio.fx.bell(o.x - sk.x, o.z - S.z); }
+    if (o.type === 'leash' && !o.barked && dz < 20 && dz > 2) { o.barked = true; if (Math.random() < 0.8) audio.fx.bark(o.x + o.parts[1].dx - sk.x, o.z + o.parts[1].dz - S.z, Math.random() < 0.5 ? 2 : 1, rand(0.92, 1.15)); }
+    if (o.act) { if (!o.snd && dz < 55 && dz > -12) o.snd = audio.fx.performer(o.act);
+      if (o.snd) { audio.fx.place(o.snd, o.x - sk.x, o.z - S.z); if (dz < -25) { audio.fx.release(o.snd); o.snd = null; o.act = null; } } }
   }
-  function removeObstacle(i) { const o = OBS[i]; if (o.ped) chars.removeGameAgent(o.ped); if (o.peds) for (const p of o.peds) chars.removeGameAgent(p); if (o.mesh) freeMesh(o.meshType || 'ped', o.mesh); OBS.splice(i, 1); }
+  function removeObstacle(i) { const o = OBS[i]; if (o.snd) audio.fx.release(o.snd); if (o.ped) chars.removeGameAgent(o.ped); if (o.peds) for (const p of o.peds) chars.removeGameAgent(p); if (o.mesh) freeMesh(o.meshType || 'ped', o.mesh); OBS.splice(i, 1); }
   function clearObstacles() { for (let i = OBS.length - 1; i >= 0; i--) removeObstacle(i); }
   // a lane change is a carve whose sideways speed is a fixed share of the forward speed
   const carveTime = (v) => clamp(L.width / (Math.max(v, 0.1) * L.carveRatio), L.carveMin, L.carveMax);
@@ -415,10 +422,10 @@ export function createGame(ctx) {
     Object.assign(sk, { mode: 'ground', t: 0, y: 0, vy: 0, trick: null, tricks: [], attempted: false, invT: 0, jumpHeld: false, stumbleT: 0, queue: [], demoHold: undefined, stance: 1 }); S.hidden = false;
     sk.speed = Math.max(sk.speed, G.speed.start * 0.8); nextRowZ = S.z - SP.startDelay; signZ = nextRowZ; lastSignZ = 1e9;
     if (!st.hasRun) { st.hasRun = true; if (ctx.onFirstRun) ctx.onFirstRun(); if (ctx.phaseNow) ctx.phaseNow(); }   // later runs carry on with the weather where it was
-    ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens();
+    ui.pops.textContent = ''; shown = 0; addSum = 0; showScreens(); audio.fx.push();
   }
   function gameOver() {
-    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false;
+    st.mode = 'over'; st.overT = 0; setMode('crash'); sk.queue.length = 0; sk.trick = null; sk.invT = 0; S.hidden = false; audio.fx.gameOver();
     renderDiscoveries(); st.score = Math.floor(st.score); entering = false;
     if (!bot.on && st.score > save.best) { save.best = st.score; st.newBest = true; writeSave(); }   // "Your best" is this browser's own record
     ui.overScore.textContent = st.score.toLocaleString(); ui.overBest.textContent = save.best.toLocaleString(); ui.newBest.style.display = st.newBest ? '' : 'none';
@@ -428,6 +435,7 @@ export function createGame(ctx) {
     ui.title.classList.toggle('show', st.mode === 'title'); ui.over.classList.toggle('show', st.mode === 'over' && st.overT > G.overDelay);
     ui.pause.classList.toggle('show', st.paused); ui.hud.classList.toggle('show', st.mode !== 'title');
     const asking = entering && st.mode === 'over' && st.overT > G.overDelay;
+    if (asking && !wasAsking) audio.fx.jingle(); wasAsking = asking;   // made the top 5
     ui.entry.style.display = asking ? 'block' : 'none'; ui.overGo.style.display = entering ? 'none' : '';
     if (asking && document.activeElement !== ui.name) ui.name.focus();
   }
@@ -464,7 +472,7 @@ export function createGame(ctx) {
     let f = chargeFrac();
     if (st.mode === 'playing') { f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); st.energy -= ollieCost(f); }
     const h = lerp(J.minHeight, J.maxHeight, f);
-    setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
+    audio.fx.pop(f); setMode('air'); sk.vy = Math.sqrt(2 * J.gravity * h); sk.y = 0; sk.airT = 0; sk.airDur = 2 * sk.vy / J.gravity; sk.jumpF = f; sk.jumpH = h;
     sk.tricks = []; sk.clearedThisJump = 0; st.jumped = true; sk.botTried = false;
     sk.trick = null; sk.attempted = false;
   }
@@ -472,7 +480,7 @@ export function createGame(ctx) {
   // turns it into the double trick, carrying on from wherever the board has got to. On the ground, ↓ swaps which foot leads.
   function pressFlip(dir) {
     if (sk.mode === 'air') { const c = dir > 0 ? 'U' : 'D', tr = sk.trick;
-      if (!sk.attempted) startFlip(c); else if (tr && tr.keys.length === 1 && tr.t < TR.flipWindow) startFlip(tr.keys + c, S.pose.roll || 0); }
+      if (!sk.attempted) { startFlip(c); audio.fx.flip(); } else if (tr && tr.keys.length === 1 && tr.t < TR.flipWindow) startFlip(tr.keys + c, S.pose.roll || 0); }
     else if (dir < 0 && (grounded() || sk.mode === 'charge')) sk.stance = -sk.stance;
   }
   // a trick lands only from a high enough jump with enough air left; otherwise the board starts to go and he bails on landing
@@ -494,7 +502,7 @@ export function createGame(ctx) {
     save.hints[key] = true; writeSave(); const d = document.createElement('div'); d.className = 'pop hint'; d.textContent = text; ui.pops.appendChild(d); setTimeout(() => d.remove(), 4000);
   }
   function bail() {
-    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
+    if (bot.on) bot.bails++; sk.trick = null; setMode('bail'); audio.fx.bail(); sk.speed *= G.speed.bailFactor; breakCombo(); sk.invT = TR.bail.invuln; damage(G.obstacles.cones.dmg, 'BAIL');
   }
   function pressJump() { if (sk.mode !== 'air' && sk.mode !== 'crash' && sk.mode !== 'charge') startCharge(); }
   function releaseJump() { sk.jumpHeld = false; }
@@ -503,15 +511,15 @@ export function createGame(ctx) {
     if (sk.mode === 'slip' || sk.mode === 'crash') return;
     sk.slipSpeed = sk.speed; sk.slipApplied = false; setMode('slip');
   }
-  function hit(dmg = HP.hit) {
+  function hit(dmg = HP.hit, type = '') {
     if (st.mode !== 'playing') return false;   // every obstacle you run into costs its own damage (each one can only hit once)
-    sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
+    audio.fx.hit(type === 'cones'); sk.speed *= G.speed.hitFactor; sk.stumbleT = H.stumbleTime; S.shake = H.shake; S.hitStop = H.hitStop; breakCombo(); damage(dmg, 'OUCH'); return true;
   }
   function land() {
     sk.y = 0; sk.vy = 0;
     if (sk.trick && !sk.trick.fail && sk.trick.t >= sk.trick.dur) { sk.tricks.push(sk.trick.type); sk.trick = null; }   // finished, still open for a second press
     if (sk.trick) { bail(); return; }   // a failed attempt, or still flipping
-    setMode('land');
+    setMode('land'); audio.fx.land(sk.jumpF);
     if (st.mode !== 'playing') return;
     const over = sk.clearedThisJump > 0;
     let pts = Math.round(lerp(SC.ollieMin, SC.ollieMax, sk.jumpF) / 5) * 5; const names = [];
@@ -519,6 +527,7 @@ export function createGame(ctx) {
     if (bot.on) bot.landed += sk.tricks.length;
     if (!sk.attempted && ++st.plainJumps >= G.hints.airAfter) hint('air', 'Try ↑ or ↓ in the air');
     const k = over ? SC.overObstacle : 1, mult = Math.min(SC.comboMax, 1 + st.combo); pts *= k * mult; addBonus(pts); st.combo++;
+    if (names.length) audio.fx.success(st.combo);   // a landed trick: the chime climbs with the combo
     const label = names.length ? names.join(' + ') : (sk.jumpF > 0.7 ? 'BIG OLLIE' : 'OLLIE');   // a trick's popup shows its own points; the score tag shows the jump's total
     popup(`${label}${over ? ' OVER' : ''} +${names.length ? trickPts * k * mult : pts}${mult > 1 ? `  ×${mult}` : ''}`, names.length ? 'flip' : '');
   }
@@ -559,9 +568,9 @@ export function createGame(ctx) {
         break;
       case 'land': if (sk.t >= J.landTime) setMode('ground'); break;
       case 'slip':
-        if (!sk.slipApplied && sk.t >= J.coyote) { sk.slipApplied = true; sk.speed = sk.slipSpeed * G.speed.slipFactor; S.shake = H.shake * 0.5; damage(HP.slip, 'SLIP'); }
-        if (sk.t >= H.slipTime) setMode('ground'); break;
-      case 'bail': if (sk.t >= H.bailTime) setMode('ground'); break;
+        if (!sk.slipApplied && sk.t >= J.coyote) { sk.slipApplied = true; sk.speed = sk.slipSpeed * G.speed.slipFactor; S.shake = H.shake * 0.5; audio.fx.slip(); damage(HP.slip, 'SLIP'); }
+        if (sk.t >= H.slipTime) { setMode('ground'); audio.fx.push(); } break;   // back on the board: push off
+      case 'bail': if (sk.t >= H.bailTime) { setMode('ground'); audio.fx.push(); } break;
     }
     return sk.lean;
   }
@@ -600,7 +609,7 @@ export function createGame(ctx) {
   // -------------------------------------------------------------------------------------
   const SKB = G.skaterBox;
   function nearMiss(o) {
-    st.nearMisses++; const mult = Math.min(SC.comboMax, 1 + st.combo), pts = SC.nearMiss * mult; addBonus(pts); st.combo++;
+    audio.fx.nearMiss(Math.sign(o.x - sk.x)); st.nearMisses++; const mult = Math.min(SC.comboMax, 1 + st.combo), pts = SC.nearMiss * mult; addBonus(pts); st.combo++;
     popup(`CLOSE CALL +${pts}${mult > 1 ? `  ×${mult}` : ''}`, 'near');
   }
   function collide() {
@@ -616,7 +625,7 @@ export function createGame(ctx) {
         if (gap > 0) { o.minGap = Math.min(o.minGap, gap); continue; }   // passing beside it: track how close
         if (p.clear !== null && sk.y > p.clear) { if (!o.cleared) sk.clearedThisJump++; o.cleared = true; o.minV = Math.min(o.minV, sk.y - p.clear); continue; }
         if (sk.invT > 0) continue;   // brief invincibility after a bail
-        o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(p.dmg); break;
+        o.done = true; o.hit = true; if (p.kind === 'slip') slip(); else hit(p.dmg, o.type); break;
       }
       if (!o.done && !ahead) {   // fully behind the skater
         o.done = true; if (st.mode !== 'playing') continue;
@@ -761,6 +770,9 @@ export function createGame(ctx) {
     const lean = updateSkater(dt);
     S.x = sk.x; S.camRoll = lean * L.camRoll;
     writePose(lean);
+    // continuous sounds: wheels while on the board, the charge tone, the low-health heartbeat, the weather's ambience
+    audio.fx.frame(dt, sk.speed, (grounded() || sk.mode === 'charge') && st.mode !== 'over', sk.mode === 'charge' && st.mode === 'playing' ? chargeFrac() : -1,
+      st.mode === 'playing' && st.health > 0 && st.health < HP.max * 0.3, ctx.phase ? ctx.phase.i ?? 0 : 1, ctx.phase ? ctx.phase.blend || 0 : 0);
 
     // obstacles: spawn ahead, move pedestrians and crossing traffic, collide, recycle behind
     spawnAhead();
@@ -798,12 +810,12 @@ export function createGame(ctx) {
   $('gCreditsClose').addEventListener('click', () => showCredits(false));
   for (const b of ['gCreditsBtn', 'gCreditsClose']) $(b).addEventListener('mousedown', (e) => e.preventDefault());   // a click never leaves keyboard focus on the button
   function press(a) {   // returns true if the action did something on this screen
-    if (creditsOpen) { if (a === 'pause') showCredits(false); else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
-    if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); return true; } return false; }
-    if (st.mode === 'title') { if (a === 'confirm') { startGame(); return true; } if (a === 'credits') { showCredits(true); return true; } return false; }
-    if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { startGame(); return true; } return false; }
+    if (creditsOpen) { if (a === 'pause') { showCredits(false); audio.fx.click(); } else if (a === 'flipUp' || a === 'flipDown') ui.roll.scrollTop += a === 'flipUp' ? -60 : 60; return true; }
+    if (st.paused) { if (a === 'pause' || a === 'confirm') { setPaused(false); audio.fx.click(); return true; } return false; }
+    if (st.mode === 'title') { if (a === 'confirm') { audio.fx.click(); startGame(); return true; } if (a === 'credits') { audio.fx.click(); showCredits(true); return true; } return false; }
+    if (st.mode === 'over') { if (a === 'confirm' && st.overT > G.overDelay && !entering) { audio.fx.click(); startGame(); return true; } return false; }
     switch (a) {
-      case 'pause': setPaused(true); return true;
+      case 'pause': audio.fx.click(); setPaused(true); return true;
       case 'laneLeft': sk.held[-1] = true; pressLane(-1); return true;
       case 'laneRight': sk.held[1] = true; pressLane(1); return true;
       case 'crouchJump': pressJump(); return true;
@@ -818,6 +830,7 @@ export function createGame(ctx) {
     if (k === 'm' || k === 'M') { if (!e.repeat) popup(audio.toggleMute() ? 'SOUND OFF' : 'SOUND ON'); return true; }
     if (k === 'n' || k === 'N') { if (!e.repeat) popup(audio.toggleMusic() ? 'MUSIC OFF' : 'MUSIC ON'); return true; }
     if (k === '-' || k === '_' || k === '=' || k === '+') { popup(`MUSIC ${Math.round(audio.setMusicVolume(audio.prefs.musicVol + (k === '-' || k === '_' ? -0.05 : 0.05)) * 100)}%`); return true; }
+    if (k === '[' || k === '{' || k === ']' || k === '}') { popup(`SOUND FX ${Math.round(audio.setSfxVolume(audio.prefs.sfxVol + (k === '[' || k === '{' ? -0.05 : 0.05)) * 100)}%`); audio.fx.click(); return true; }
     if (k === 'h' || k === 'H') { debug = !debug; return true; }
     if (k === 'p' || k === 'P') { if (!e.repeat) setAutopilot(!bot.on); return true; }
     if (k === 't' || k === 'T') { if (!e.repeat) dbgOn = !dbgOn; return true; }

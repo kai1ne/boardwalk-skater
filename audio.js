@@ -3,21 +3,24 @@
 //
 // Graph: two music "decks" (an <audio> element each, streamed, routed in with createMediaElementSource) → deck gain
 // (crossfade) → music volume → music mute → duck → pause fade → master (M mutes everything) → limiter → speakers.
-// Future sound effects connect to `sfx`, which joins at the master, so they share the mute and the limiter.
+// Sound effects (sfx.js) play into `sfx`, the ambience bed into `amb` (its own level); both go through the SFX volume
+// and their own pause fade into the master, so they share the M mute and the limiter. Once a pause has faded out the
+// whole AudioContext is suspended, so nothing at all plays (or uses CPU) while the game is paused or the tab hidden.
 // Nothing is created until the first key press (browsers only let audio start after a user gesture), and the music
 // is never decoded into memory: the elements stream it. Exactly two <audio> elements exist for the whole session;
 // the idle one preloads the next track, and they swap roles at every crossfade.
 // =====================================================================================
+import { createSfx, SILENT_SFX } from './sfx.js';
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export function createAudio({ tracks, cfg: A }) {
   // saved settings (this browser only); storage may be blocked, then it lives in memory for this visit
-  const prefs = { musicVol: A.musicVolume, musicMuted: false, muted: false };
+  const prefs = { musicVol: A.musicVolume, sfxVol: A.sfx.volume, musicMuted: false, muted: false };
   try { Object.assign(prefs, JSON.parse(localStorage.getItem(A.saveKey) || '{}')); } catch (e) { /* defaults */ }
-  prefs.musicVol = clamp(+prefs.musicVol || 0, 0, 1);
+  prefs.musicVol = clamp(+prefs.musicVol || 0, 0, 1); prefs.sfxVol = clamp(Number.isFinite(+prefs.sfxVol) ? +prefs.sfxVol : A.sfx.volume, 0, 1);
   const savePrefs = () => { try { localStorage.setItem(A.saveKey, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } };
 
-  let ctx = null, node = null, decks = null, cur = null, nxt = null;
+  let ctx = null, node = null, decks = null, cur = null, nxt = null, fx = null;
   let order = [], pos = 0, gamePaused = false, started = false, fading = false;
   const failed = new Set();
   const usable = () => tracks.filter((t, i) => !failed.has(i)).length;
@@ -39,13 +42,14 @@ export function createAudio({ tracks, cfg: A }) {
   function build() {
     ctx = new AudioContext();
     const g = (v = 1) => { const n = ctx.createGain(); n.gain.value = v; return n; };
-    node = { musicVol: g(prefs.musicVol), musicMute: g(prefs.musicMuted ? 0 : 1), duck: g(), pause: g(), master: g(prefs.muted ? 0 : 1), sfx: g() };
+    node = { musicVol: g(prefs.musicVol), musicMute: g(prefs.musicMuted ? 0 : 1), duck: g(), pause: g(), master: g(prefs.muted ? 0 : 1), sfx: g(), amb: g(), sfxVol: g(prefs.sfxVol), sfxPause: g() };
     // limiter: a hard, fast compressor just under full scale so the music and future effects can never clip together
     const lim = ctx.createDynamicsCompressor();
     lim.threshold.value = A.limiter.threshold; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.25;
     node.limiter = lim; node.analyser = ctx.createAnalyser(); node.analyser.fftSize = 2048;
     node.musicVol.connect(node.musicMute).connect(node.duck).connect(node.pause).connect(node.master);
-    node.sfx.connect(node.master); node.master.connect(lim).connect(ctx.destination); lim.connect(node.analyser);
+    node.sfx.connect(node.sfxVol); node.amb.connect(node.sfxVol); node.sfxVol.connect(node.sfxPause).connect(node.master);
+    node.master.connect(lim).connect(ctx.destination); lim.connect(node.analyser);
     decks = [0, 1].map(() => {
       const el = new Audio(); el.preload = 'auto';
       const d = { el, gain: g(0), track: -1 };
@@ -55,6 +59,7 @@ export function createAudio({ tracks, cfg: A }) {
     });
     setInterval(tick, 50);
     document.addEventListener('visibilitychange', applyPause);
+    fx = createSfx({ ctx, out: node.sfx, amb: node.amb, cfg: A.sfx, duck: (db, hold) => api.duck(db, hold) });   // also starts loading the ambience
   }
 
   function load(d, i) { d.track = i; d.el.src = A.folder + tracks[i].file; d.el.load(); }
@@ -110,33 +115,35 @@ export function createAudio({ tracks, cfg: A }) {
   let pauseTimer = 0;
   function applyPause() {
     if (!ctx || !cur) return;
-    const t = ctx.currentTime, gp = node.pause.gain; clearTimeout(pauseTimer);
-    gp.cancelScheduledValues(t); gp.setValueAtTime(gp.value, t);
+    const t = ctx.currentTime; clearTimeout(pauseTimer);
+    for (const gp of [node.pause.gain, node.sfxPause.gain]) { gp.cancelScheduledValues(t); gp.setValueAtTime(gp.value, t); }
     if (shouldPlay()) {
       if (ctx.state === 'suspended') ctx.resume();
       for (const d of fading ? [cur, nxt] : [cur]) if (d.track >= 0 && d.el.paused) play(d);
-      gp.linearRampToValueAtTime(1, t + A.resumeFade);
+      node.pause.gain.linearRampToValueAtTime(1, t + A.resumeFade); node.sfxPause.gain.linearRampToValueAtTime(1, t + A.resumeFade);
     } else {
-      gp.linearRampToValueAtTime(0, t + A.pauseFade);
-      pauseTimer = setTimeout(() => { if (!shouldPlay()) for (const d of decks) d.el.pause(); }, A.pauseFade * 1000 + 30);
+      node.pause.gain.linearRampToValueAtTime(0, t + A.pauseFade); node.sfxPause.gain.linearRampToValueAtTime(0, t + A.pauseFade);
+      // once faded: pause the music elements and suspend the context (sounds already scheduled wait, then carry on)
+      pauseTimer = setTimeout(() => { if (shouldPlay()) return; for (const d of decks) d.el.pause(); if (ctx.state === 'running') ctx.suspend(); }, A.pauseFade * 1000 + 30);
     }
   }
 
   const ramp = (param, v) => { const t = ctx.currentTime; param.cancelScheduledValues(t); param.setValueAtTime(param.value, t); param.linearRampToValueAtTime(v, t + 0.05); };
-  return {
+  const api = {
     // call on every key press: the first one (a real user gesture) creates the graph and starts the first track
     unlock() {
-      if (!tracks.length || (started && ctx && ctx.state === 'running') || (ctx && !usable())) return;
+      if (started && ctx && (ctx.state === 'running' || gamePaused)) return;   // paused: resuming the game resumes the sound
       if (!ctx) { build(); shuffle(); cur = decks[0]; nxt = decks[1]; }
-      ctx.resume(); started = true;
-      if (cur.track < 0) { const i = nextIndex(order[order.length - 1]); if (i >= 0) startTrack(cur, i, true); }
+      ctx.resume(); started = true;   // with no playable music the effects still run
+      if (cur.track < 0 && usable()) { const i = nextIndex(order[order.length - 1]); if (i >= 0) startTrack(cur, i, true); }
       else applyPause();
     },
     setPaused(p) { gamePaused = p; applyPause(); },
     toggleMute() { prefs.muted = !prefs.muted; savePrefs(); if (ctx) ramp(node.master.gain, prefs.muted ? 0 : 1); return prefs.muted; },
     toggleMusic() { prefs.musicMuted = !prefs.musicMuted; savePrefs(); if (ctx) ramp(node.musicMute.gain, prefs.musicMuted ? 0 : 1); return prefs.musicMuted; },
     setMusicVolume(v) { prefs.musicVol = clamp(Math.round(v * 20) / 20, 0, 1); savePrefs(); if (ctx) ramp(node.musicVol.gain, prefs.musicVol); return prefs.musicVol; },
-    // a gentle dip under sound effects (dB below normal, held `hold` s); unused until the game has effects
+    setSfxVolume(v) { prefs.sfxVol = clamp(Math.round(v * 20) / 20, 0, 1); savePrefs(); if (ctx) ramp(node.sfxVol.gain, prefs.sfxVol); return prefs.sfxVol; },
+    // a gentle dip in the music under tricks, hits and the game-over sting (dB below normal, held `hold` s)
     duck(db = A.duck.db, hold = A.duck.hold) {
       if (!ctx) return; const t = ctx.currentTime, gd = node.duck.gain, v = Math.pow(10, -Math.abs(db) / 20);
       gd.cancelScheduledValues(t); gd.setValueAtTime(gd.value, t); gd.linearRampToValueAtTime(v, t + A.duck.attack);
@@ -144,7 +151,9 @@ export function createAudio({ tracks, cfg: A }) {
     },
     get prefs() { return { ...prefs }; },
     get sfx() { return node && node.sfx; },
+    get fx() { return fx || SILENT_SFX; },   // the sound effects (no-ops until the first key press)
     // test hooks
-    get debug() { return { ctx, node, decks, order, pos, failed: [...failed], fading, cur: cur && cur.track, playing: decks && decks.filter((d) => !d.el.paused).length }; },
+    get debug() { return { cfg: A, ctx, node, decks, order, pos, failed: [...failed], fading, cur: cur && cur.track, playing: decks && decks.filter((d) => !d.el.paused).length }; },
   };
+  return api;
 }

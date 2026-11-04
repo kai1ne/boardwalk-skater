@@ -29,9 +29,18 @@ loads from jsDelivr through an import map.
 | M | Mute or unmute all sound |
 | N | Mute or unmute the music |
 | - / = | Music volume down / up (5% steps; default 35%) |
+| [ / ] | Sound effects and ambience volume down / up (5% steps; default 70%) |
 
-Music starts with the first key press (browsers don't allow sound before one), pauses and resumes with the game, and
+Sound starts with the first key press (browsers don't allow sound before one), pauses and resumes with the game, and
 fades in and out. The mute and volume settings are saved in this browser.
+
+Sound effects are synthesized in code (`sfx.js`): wheels that follow your speed, the push-off, the pop, a flip whoosh
+(the same for every trick), the landing, a chime that climbs with the combo when a trick lands, the bail, hits, slips,
+close calls, a soft heartbeat under 30% health, menu clicks, the game-over sting and a jingle when you make the top 5.
+Holding Space plays a quiet tone that rises with the crouch. Cyclists' bells, barking dogs, the influencer's camera and
+the performers' music are placed where they are (Web Audio PannerNode). Under it all, an ambience bed of surf, gulls,
+crowd, a far foghorn and dogs (small CC0 recordings in `assets/sfx/`, loaded after the first key press) changes with the
+weather. The music dips 3 dB under landed tricks, bails, hits and slips, and 4 dB under the game-over sting.
 
 Tricks: ↑ kickflip · ↓ heelflip · ↑↑ 360 flip · ↓↓ impossible · ↑↓ or ↓↑ hardflip (hidden bonus). Each needs a minimum jump height
 (0.60, 0.60, 0.85, 0.95 and 0.75 m) and enough air left to finish. If not, he bails: cone damage, combo lost, a slowdown and a
@@ -119,6 +128,10 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `assets/characters/` — Quaternius CC0 characters, animations and dogs (see `CREDITS.md`).
 - `audio.js` — the sound graph (master mute and limiter) and the music playlist: two streamed `<audio>` elements, a
   shuffled order that repeats forever, and a crossfade between tracks (`GAME.audio` in the HTML holds the numbers).
+  Pausing fades everything out, then suspends the AudioContext.
+- `sfx.js` — the sound effects (Web Audio synthesis, capped voices, positional sounds) and the ambience bed, mixed per
+  weather phase (`GAME.audio.sfx` in the HTML holds every level and the per-phase mix).
+- `assets/sfx/` — the ambience recordings: mono 64 kbps MP3s, about 720 KB in all (sources in `CREDITS.md`).
 - `icon.svg`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
   (Open Graph / X card tags in both HTML pages).
 - `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).

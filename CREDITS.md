@@ -83,6 +83,29 @@ AI-generated with Suno, supplied by Calvin Bak (`assets/music/`):
 
 Suno plan and terms link: not filled in yet (`tool`, `plan` and `termsUrl` in `MUSIC_TRACKS` in `game.js`).
 
+## Ambience — Freesound (CC0 1.0)
+
+Each sound's page was opened and its license confirmed as Creative Commons 0 before download. The files in
+`assets/sfx/` were cut from the Freesound previews, made mono, level-matched and encoded at 64 kbps:
+
+| File | Sound | Author | Source |
+| --- | --- | --- | --- |
+| `amb-waves.mp3` | Distant Waves on Beach (40 s from 0:20) | bdgdoherty | https://freesound.org/people/bdgdoherty/sounds/837248/ |
+| `amb-crowd.mp3` | bathing beach atmo (40 s from 0:40) | Garuda1982 | https://freesound.org/people/Garuda1982/sounds/531430/ |
+| `gull-call.mp3` | Seagull single call | steaq | https://freesound.org/people/steaq/sounds/263786/ |
+| `gulls.mp3` | seagulls-mateo | smedloidian | https://freesound.org/people/smedloidian/sounds/787348/ |
+| `foghorn.mp3` | Long Distant Foghorn | Danjocross | https://freesound.org/people/Danjocross/sounds/507471/ |
+| `dog-bark.mp3` | Single Dog Bark | kwahmah_02 | https://freesound.org/people/kwahmah_02/sounds/277058/ |
+| `dog-bark-far.mp3` | Dog Barking Distance - 1 (one bark) | SpaceJoe | https://freesound.org/people/SpaceJoe/sounds/485962/ |
+
+License: https://creativecommons.org/publicdomain/zero/1.0/
+
+## Sound effects
+
+Synthesized in code at runtime (`sfx.js`, Web Audio): wheels, push, pop, flip, landing, trick chime, bail, hits, slip,
+close-call whoosh, heartbeat, bicycle bell, camera shutter, menu clicks, countdown beeps, game-over sting, top-5 jingle
+and the performers' music. No sound files.
+
 ## Procedural (canvas-generated, original)
 
 Generated at runtime, with no external assets: corrugated roofing and roll-up shutter normal maps, stucco, stone
