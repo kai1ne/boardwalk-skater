@@ -111,9 +111,13 @@
                        font: bold 20px "Trebuchet MS", "Lucida Grande", sans-serif; letter-spacing: 2px; text-align: center; outline: none; }
   .card .entry .hint { font-size: 12px; opacity: .6; margin-top: 6px; }
   @keyframes blink { 50% { opacity: .45; } }
-  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #cfd5db;
-             font: bold 15px "Trebuchet MS", "Lucida Grande", sans-serif; color: #333; transition: opacity .6s; }
-  #hud, #ghud, #gBot, .screen, #loading, .card input { font-weight: bold; text-transform: uppercase; }   /* all UI text: bold Trebuchet MS in capitals */
+  #loading { position: fixed; inset: 0; background: #cfd5db; transition: opacity .6s; }
+  /* while the game loads, the title card is already up with a loading bar where "Press Space to start" goes */
+  .card .load { display: none; width: 240px; margin: 0 auto; font-size: 12px; letter-spacing: 1px; }
+  .card .load .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; margin-bottom: 6px; }
+  .card .load .bar i { display: block; height: 100%; width: 0; background: #ffd84a; transition: width .25s; }
+  .booting .card .load { display: block; } .booting .card .go, .booting #gCreditsBtn { display: none; }
+  #hud, #ghud, #gBot, .screen, .card input { font-weight: bold; text-transform: uppercase; }   /* all UI text: bold Trebuchet MS in capitals */
 </style>
 <script type="importmap">
 {
@@ -124,17 +128,21 @@
 }
 </script>
 </head>
-<body>
-<div id="loading">Building the boardwalk…</div>
+<body class="booting">
+<div id="loading"></div>
 <div id="hud" class="off"></div>
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
-<div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.webp" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
+<div id="gTitle" class="screen show"><div class="card"><h1><img class="logo" id="gTitleLogo" src="assets/ui/title-logo.webp" fetchpriority="high" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
   <div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div>
-  <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gScores"></ol><div class="lbnote" id="gLbNote"></div></div>
-  <div class="go">Press Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
-<div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.webp" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
+  <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gScores"><li class="empty"><span class="r">1</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">2</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">3</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">4</span><span class="n">—</span><span class="s"></span></li><li class="empty"><span class="r">5</span><span class="n">—</span><span class="s"></span></li></ol><div class="lbnote" id="gLbNote">Loading…</div></div>
+  <div class="go">Press Space to start</div><div class="load" id="gLoad"><div class="bar"><i id="gLoadFill"></i></div><div id="gLoadText">Loading the game…</div></div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
+<script>   // load timings (ms since navigation): title = the title card and its logo are up, playable = Space starts a run (__vb.loadTimes)
+  window.__loadTimes = {}; { const l = document.getElementById('gTitleLogo'), t = () => { window.__loadTimes.title = window.__loadTimes.title || performance.now(); };
+    if (l.complete) t(); else { l.addEventListener('load', t); l.addEventListener('error', t); } }
+</script>
+<div id="gOver" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/gameover-logo.webp" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Your best: <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">Global top 5! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint" id="gEntryHint">3 to 10 letters or numbers · Enter to submit</div></div>
   <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gOverScores"></ol><div class="lbnote" id="gOverLbNote"></div></div>
@@ -142,7 +150,7 @@
   <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Your best and discovered tricks can't be saved in this browser</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
 <div id="gCredits" class="screen"><div class="card">
-  <h1><img class="logo over cr" src="assets/ui/credits-logo.webp" alt="Credits"></h1>
+  <h1><img class="logo over cr" data-src="assets/ui/credits-logo.webp" alt="Credits"></h1>
   <div class="roll" id="gCreditsRoll">
     <h3>Game</h3><p>Made by Calvin Bak</p>
     <h3>Title, Game Over, Paused and Credits logos</h3><p>AI-generated images</p>
@@ -160,7 +168,7 @@
   </div>
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
-<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
+<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" data-src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -412,7 +420,16 @@ const U = {
 // =====================================================================================
 // TEXTURES — Poly Haven (CC0) with canvas fallbacks
 // =====================================================================================
+// LOADING BAR: real progress, advanced as files finish (the title card shows it until the game is playable).
+// Shares follow the download sizes: the world textures ≈60%, the character files ≈25%, then building the crowd.
+const BOOT = { tex: 0, texN: 1, chars: 0, charsN: 1, build: 0, fill: document.getElementById('gLoadFill'), text: document.getElementById('gLoadText') };
+function bootProgress(label) {
+  const f = 0.05 + 0.6 * BOOT.tex / BOOT.texN + 0.25 * BOOT.chars / BOOT.charsN + 0.1 * BOOT.build;
+  BOOT.fill.style.width = (Math.min(f, 1) * 100).toFixed(1) + '%'; if (label) BOOT.text.textContent = label;
+}
+bootProgress('Building the boardwalk…');
 const loadMgr = new THREE.LoadingManager();
+loadMgr.onProgress = (url, loaded, total) => { BOOT.tex = loaded; BOOT.texN = total; bootProgress(); };
 const texLoader = new THREE.TextureLoader(loadMgr);
 const fallbacksUsed = [];
 function solidCanvas(color, noise = 0) {
@@ -447,6 +464,10 @@ const TX = {
   dirt: pbr('dirt_floor', { ao: false, col: '#7a6a55' }),
   sand: pbr('sand_03', { ao: false, col: '#c9b796' }),   // coast_sand_04 also downloaded; sand_03 matched Venice's pale trampled sand better
 };
+// the character files and the game code download alongside the textures (both modules are fetched now, used in loadMgr.onLoad)
+const charsModule = import('./characters.js'), gameModule = import('./game.js');
+gameModule.catch(() => {});   // a failure is reported where it's awaited
+charsModule.then((m) => { BOOT.charsN = m.CHARACTER_FILES; m.preloadCharacters(() => { BOOT.chars++; bootProgress(); }).catch(() => {}); }).catch(() => {});
 
 function canvasTex(c, { srgb = true, repeat = false, flip = true } = {}) {
   const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace;
@@ -2044,6 +2065,7 @@ window.__vb = {
   timeScale: 1,        // slow motion for animation checks
   noRender: false,     // skip rendering (fast headless simulation, e.g. autopilot tests)
   setPhase(i, hold = true) { cycleT = i * PHASE_LEN; cyclePaused = hold; },
+  get loadTimes() { return window.__loadTimes; },   // ms since navigation: title card up, playable
   ref(pose) { camMode = 'ref'; Object.assign(REF_POSE, pose); S.z = pose.z - 4; },
   chase() { camMode = 'chase'; },
   stop(v = true) { S.moving = !v; },
@@ -2094,13 +2116,19 @@ let chars = null, game = null;
 loadMgr.onLoad = async () => {
   if (started) return; started = true;
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
-  try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
+  bootProgress('Bringing in the crowd…');
+  try { const { createCharacters } = await charsModule; chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
-  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, forDrumCircles, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
+  BOOT.chars = BOOT.charsN; BOOT.build = 0.8; bootProgress('Opening the boardwalk…');
+  try { const { createGame } = await gameModule; game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, forDrumCircles, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
   catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);
   frame();
+  BOOT.build = 1; bootProgress(); document.body.classList.remove('booting'); window.__loadTimes.playable = performance.now();
+  // not needed for the title or the first seconds of play: the Game Over / Paused / Credits logos load now
+  // (until one arrives its screen shows the alt text in the heading font)
+  for (const img of document.querySelectorAll('img[data-src]')) img.src = img.dataset.src;
 };
 </script>
 </body>

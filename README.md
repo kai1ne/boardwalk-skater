@@ -172,6 +172,13 @@ A track that fails to load is skipped (one warning in the console), and the game
   UnrealBloom → OutputPass → vignette and film grain.
 - **Performance:** an adaptive resolution governor moves the pixel ratio between 1 and min(devicePixelRatio, 2)
   to hold about 60 fps.
+- **Loading:** the title card (logo, controls, top-5 placeholders) is plain HTML, so it shows as soon as the page and
+  its logo arrive, with a loading bar where "Press Space to start" goes. The bar is real: it moves as each world
+  texture and character file finishes (textures ≈60%, characters ≈25%, then building the crowd). The character files
+  and `game.js` start downloading alongside the textures (`preloadCharacters()` in `characters.js`). Space starts a
+  run once everything the title scene shows has loaded. The Game Over, Paused and Credits logos load after that
+  (`data-src`), and the audio still starts on the first key press. First load is about 8.7 MB (gzip, as GitHub Pages
+  serves it); `__vb.loadTimes` gives the title and playable times of the current page load.
 
 ## People (characters.js)
 
@@ -313,3 +320,4 @@ device detection, and add touch input next to the existing `keydown` handler.
 - `timeScale` — slow motion (for example `0.05`) for checking animation.
 - `bench(30)` — milliseconds per frame without rAF timing (it forces a GPU sync).
 - `info()` — draw calls, triangles and any texture fallbacks used.
+- `loadTimes` — ms from navigation to the title card (`title`) and to the game being playable (`playable`).

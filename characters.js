@@ -217,19 +217,31 @@ const PERFORMER_LOOKS = {
 };
 
 // -------------------------------------------------------------------------------------
-export async function createCharacters(ctx) {
-  const { renderer, scene, camera, chunks, skater, S } = ctx;
-  const Q = Object.assign({ rigsPerSex: 30, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260,
-    cyclists: 10, dogs: 6, appearances: 20, skaterDecimate: 0.55, lodNear: 12, lodFar: 13.5, lodReduce: 0.6 }, ctx.Q || {});
+// downloads: preloadCharacters() starts every file the crowd needs (called from the page as soon as this module is in,
+// so they arrive alongside the world textures); createCharacters() awaits the same promise. onItem fires once per file
+// set (a glTF with its .bin and textures counts as one) for the loading bar; CHARACTER_FILES is how many there are.
+const HAIR_FILES = ['Hair_Buzzed', 'Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale', 'Hair_Beard'];
+export const CHARACTER_FILES = 7 + HAIR_FILES.length;
+let assetsP = null;
+export function preloadCharacters(onItem) {
+  if (assetsP) return assetsP;
   const loader = new GLTFLoader(), texLoader = new THREE.TextureLoader();
-  const load = (u) => loader.loadAsync(BASE + u);
-  const HAIR_FILES = ['Hair_Buzzed', 'Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale', 'Hair_Beard'];
-  const loadTex = (u) => texLoader.loadAsync(BASE + u).then((t) => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; return t; });
-  const [gM, gF, gA, gShiba, gHusky, texML, texFL, ...gHair] = await Promise.all([
+  const tick = (p) => p.then((v) => { if (onItem) onItem(); return v; });
+  const load = (u) => tick(loader.loadAsync(BASE + u));
+  const loadTex = (u) => tick(texLoader.loadAsync(BASE + u).then((t) => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; return t; }));
+  assetsP = Promise.all([
     load('Superhero_Male_FullBody.gltf'), load('Superhero_Female_FullBody.gltf'), load('UAL1_Standard.glb'),
     load('dogs/Shiba_Inu.glb'), load('dogs/Husky.glb'),
     loadTex('tex/T_Superhero_Male_Light.webp'), loadTex('tex/T_Superhero_Female_Light_BaseColor.webp'),
     ...HAIR_FILES.map((h) => load(`hair/${h}.gltf`))]);
+  return assetsP;
+}
+
+export async function createCharacters(ctx) {
+  const { renderer, scene, camera, chunks, skater, S } = ctx;
+  const Q = Object.assign({ rigsPerSex: 30, nearCount: 30, rFull: 40, rRig: 80, rImp: 260, shadowDist: 30, midEvery: 3, walkers: 260,
+    cyclists: 10, dogs: 6, appearances: 20, skaterDecimate: 0.55, lodNear: 12, lodFar: 13.5, lodReduce: 0.6 }, ctx.Q || {});
+  const [gM, gF, gA, gShiba, gHusky, texML, texFL, ...gHair] = await preloadCharacters();
   const clipNames = gA.animations.map((c) => c.name);
   console.log('[characters] Universal Animation Library clips (%d):', clipNames.length, clipNames.join(', '));
   console.log('[characters] Shiba Inu clips:', gShiba.animations.map((c) => c.name).join(', '));
