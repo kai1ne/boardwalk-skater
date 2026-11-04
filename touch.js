@@ -50,9 +50,9 @@ export function createTouch({ game, cfg: T }) {
   function layout() {
     const vv = window.visualViewport, vw = vv ? vv.width : innerWidth, vh = vv ? vv.height : innerHeight, vmin = Math.min(vw, vh);
     const cs = getComputedStyle(probe); L.inset = { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0, t: parseFloat(cs.paddingTop) || 0, b: parseFloat(cs.paddingBottom) || 0 };
-    const D = Math.max(T.minSize, T.sizes[prefs.size] * vh), m = T.margin * vmin;
+    const D = Math.max(T.minSize, T.sizes[prefs.size] * vh), m = T.margin * vmin, mx = (T.marginX ?? T.margin) * vmin;
     Object.assign(L, { vw, vh, D, r: D / 2,
-      cx: prefs.leftHanded ? vw - L.inset.r - m - D / 2 : L.inset.l + m + D / 2, cy: vh - L.inset.b - m - D / 2 });
+      cx: prefs.leftHanded ? vw - L.inset.r - mx - D / 2 : L.inset.l + mx + D / 2, cy: vh - L.inset.b - m - D / 2 });
     L.hitR = L.r + T.hitPadding * D; L.bufR = L.hitR + T.bufferPadding * D; L.guardR = L.bufR + T.guardPadding * D; L.deadR = T.deadZone * L.r;
     Object.assign(pad.style, { width: D + 'px', height: D + 'px', left: L.cx - D / 2 + 'px', top: L.cy - D / 2 + 'px', opacity: T.opacity });
     const pb = Math.max(T.pauseMin, T.pauseSize * vmin), pm = T.pauseMargin * vmin;

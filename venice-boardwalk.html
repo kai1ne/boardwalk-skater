@@ -305,7 +305,8 @@ const GAME = {
            leftHanded: false,               // default side: false = D-pad on the left
            size: 'medium', sizes: { small: 0.18, medium: 0.22, large: 0.27 },   // D-pad diameter as a share of the viewport height
            minSize: 96,                    // px floor for the D-pad diameter on very short screens
-           margin: 0.035,                  // gap from the screen edges (share of the shorter side), on top of the safe-area insets
+           margin: 0.035,                  // gap from the bottom edge (share of the shorter side), on top of the safe-area inset
+           marginX: 0.12,                  // gap from the side edge: moves the D-pad in from the corner so the left arrow is easy to reach
            opacity: 0.5,
            hitPadding: 0.2,                // zone 1: the hit area reaches this far past the drawn D-pad
            bufferPadding: 0.4,             // zone 2: the buffer ring beyond that (never jumps or trick-taps)
@@ -357,7 +358,7 @@ const GAME = {
   leaderboard: { timeoutMs: 5000, cacheKey: 'boardwalkSkater.top5.v1' },   // the global top 5 (server URL: LEADERBOARD_URL in game.js)
   save: { key: 'boardwalkSkater.save.v1', nameMax: 10 },   // localStorage (versioned key); the old keys are read once to carry scores over
   audio: { folder: 'assets/music/', saveKey: 'boardwalkSkater.audio.v1',   // tracks: MUSIC_TRACKS at the top of game.js
-           session: null,                  // iOS Safari 16.4+: 'playback' plays through the silent switch; null leaves it to the system (silent switch mutes)
+           session: 'ambient',             // iOS Safari 16.4+: 'ambient' = the silent switch mutes the game (music included); 'playback' plays through it; null = Safari's default (music ignores the switch)
            musicVolume: 0.35,              // default music volume (- / = change it in 5% steps; N mutes the music, M everything)
            crossfade: 3,                   // s the next track overlaps the end of the current one
            pauseFade: 0.25, resumeFade: 0.4,   // s fades when the game pauses / resumes

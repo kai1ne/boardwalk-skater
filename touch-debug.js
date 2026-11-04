@@ -8,7 +8,7 @@
 // =====================================================================================
 const ROLE_COL = { dpad: '#45c8ff', 'buffer-assist': '#7fe3ff', 'buffer-ignored': '#ff8a8a', jump: '#4cd964', trick: '#ffd84a', title: '#ffffff', ignored: '#888888' };
 const SLIDERS = [   // [key, label, min, max, step]; 'size' edits the current D-pad size's share of the screen height
-  ['size', 'D-pad size (× height)', 0.12, 0.36, 0.01], ['hitPadding', 'hitPadding (× D)', 0, 0.6, 0.02], ['bufferPadding', 'bufferPadding (× D)', 0, 1, 0.02],
+  ['size', 'D-pad size (× height)', 0.12, 0.36, 0.01], ['marginX', 'side gap (× short side)', 0, 0.35, 0.01], ['hitPadding', 'hitPadding (× D)', 0, 0.6, 0.02], ['bufferPadding', 'bufferPadding (× D)', 0, 1, 0.02],
   ['guardPadding', 'guardPadding (× D)', 0, 1, 0.02], ['postReleaseGuard', 'postReleaseGuard ms', 0, 800, 10], ['deadZone', 'dead zone (× radius)', 0, 0.8, 0.01],
   ['repeatDelay', 'repeatDelay ms', 50, 800, 10], ['repeatInterval', 'repeatInterval ms', 50, 600, 10], ['doubleTapWindow', 'doubleTapWindow s', 0.1, 0.6, 0.01],
   ['trickSplitY', 'trickSplitY (× height)', 0.2, 0.8, 0.01],

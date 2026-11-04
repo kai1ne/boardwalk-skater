@@ -19,6 +19,10 @@ export function createAudio({ tracks, cfg: A }) {
   try { Object.assign(prefs, JSON.parse(localStorage.getItem(A.saveKey) || '{}')); } catch (e) { /* defaults */ }
   prefs.musicVol = clamp(+prefs.musicVol || 0, 0, 1); prefs.sfxVol = clamp(Number.isFinite(+prefs.sfxVol) ? +prefs.sfxVol : A.sfx.volume, 0, 1);
   const savePrefs = () => { try { localStorage.setItem(A.saveKey, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } };
+  // iOS: the music streams through <audio> elements, which Safari treats as media playback, so it ignores the ring/silent
+  // switch. An 'ambient' audio session (Safari 16.4+) makes the whole page follow the switch, like a game app. Set before
+  // anything plays; browsers without navigator.audioSession (everything but Safari) skip it
+  try { if (A.session && navigator.audioSession) navigator.audioSession.type = A.session; } catch (e) { /* not supported */ }
 
   let ctx = null, node = null, decks = null, cur = null, nxt = null, fx = null;
   let order = [], pos = 0, gamePaused = false, started = false, fading = false;
@@ -40,9 +44,6 @@ export function createAudio({ tracks, cfg: A }) {
   }
 
   function build() {
-    // iOS: Web Audio follows the ring/silent switch unless the audio session says 'playback' (Safari 16.4+). Left to the
-    // system by default (A.session null), so a phone on silent stays silent
-    try { if (A.session && navigator.audioSession) navigator.audioSession.type = A.session; } catch (e) { /* not supported */ }
     ctx = new AudioContext();
     const g = (v = 1) => { const n = ctx.createGain(); n.gain.value = v; return n; };
     node = { musicVol: g(prefs.musicVol), musicMute: g(prefs.musicMuted ? 0 : 1), duck: g(), pause: g(), master: g(prefs.muted ? 0 : 1), sfx: g(), amb: g(), sfxVol: g(prefs.sfxVol), sfxPause: g() };
