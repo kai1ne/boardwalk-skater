@@ -84,6 +84,15 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
   const pluck = (d, t, f, l) => { if (take('perf', 1)) tone(d, t, { wave: 'sawtooth', f, a: 0.003, d: 0.75, peak: l, lp: 3200, lp2: 450, lpT: 0.45 }, 'perf'); };
   const key = (d, t, f, l, len = 0.9) => { if (take('perf', 1)) tone(d, t, { wave: 'triangle', f, a: 0.004, d: len, peak: l }, 'perf'); };
   const bass = (d, t, f, l) => { if (take('perf', 1)) tone(d, t, { wave: 'triangle', f, a: 0.005, d: 0.3, peak: l }, 'perf'); };
+  // djembe strokes: B = bass (open low thump), T = tone (ringing mid), S = slap (bright crack); `size` sets each drum's pitch
+  const djembe = (d, t, kind, v, size = 1) => { if (!take('perf', 2)) return;
+    if (kind === 'B') { tone(d, t, { f: 88 * size, f2: 62 * size, sweep: 0.09, a: 0.002, d: 0.26, peak: v }, 'perf'); noise(d, t, { type: 'lowpass', f: 320, a: 0.001, d: 0.05, peak: v * 0.35 }, 'perf'); }
+    else if (kind === 'T') { tone(d, t, { f: 340 * size, f2: 305 * size, sweep: 0.05, a: 0.001, d: 0.13, peak: v * 0.55 }, 'perf'); noise(d, t, { f: 650 * size, q: 2.2, a: 0.001, d: 0.06, peak: v * 0.45 }, 'perf'); }
+    else { noise(d, t, { f: 2300 * size, q: 1.1, a: 0.001, d: 0.05, peak: v * 0.75 }, 'perf'); tone(d, t, { wave: 'triangle', f: 540 * size, a: 0.001, d: 0.045, peak: v * 0.3 }, 'perf'); } };
+  // a drum circle: one interlocking part per player (4 to 6), each on its own drum, a little loose in time and touch
+  const CIRCLE = [
+    { p: 'B..TT.B.B..TT...', size: 1, v: 1 }, { p: '..S..S....S..S.S', size: 0.94, v: 0.85 }, { p: 'T.TT.T.TT.TT.T.T', size: 1.1, v: 0.45 },
+    { p: 'B.......B..B....', size: 0.84, v: 0.9 }, { p: '....S.......S.S.', size: 1.04, v: 0.7 }, { p: 'T..T..T..T..T.T.', size: 0.98, v: 0.5 } ];
   const CH = { G: [98, 196, 247, 294], C: [131, 196, 262, 330], D: [147, 220, 294, 370], Em: [82, 165, 196, 247], Am: [110, 220, 262, 330], F: [87, 175, 220, 262] };
   const ACTS = {
     // a bucket drummer: low bucket hits, rim cracks, a busy off-beat
@@ -94,26 +103,31 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     // a keyboard on a stand: C Am F G, bass note then a broken chord
     piano: { bpm: 84, steps: 32, play(d, s, t) { const ch = CH[['C', 'Am', 'F', 'G'][s >> 3]], k = s & 7;
       if (k === 0) key(d, t, ch[0], P.level * 0.5, 1.4); else key(d, t, ch[[1, 2, 3, 2, 1, 2, 3][k - 1]] * 2, P.level * 0.3, 0.7); } },
+    // hand drums in a circle by the boardwalk (h.n players)
+    drumCircle: { bpm: 112, steps: 16, play(d, s, t, h) { const L = P.circleLevel;
+      for (let k = 0; k < Math.min(h.n, CIRCLE.length); k++) { const c = CIRCLE[k]; let st = c.p[s];
+        if (st === '.' && k === 1 && Math.random() < 0.06) st = 'S';   // now and then an extra slap
+        if (st !== '.' && Math.random() > 0.04) djembe(d, t + Math.random() * 0.012, st, L * c.v * rand(0.8, 1.05), c.size); } } },
     // breakdancers' boombox: boom-bap with a bass line, through a small speaker
     breakdance: { bpm: 92, steps: 16, speaker: true, play(d, s, t) { const L = P.level;
       if (s === 0 || s === 7 || s === 10) { kick(d, t, L); bass(d, t, s === 10 ? 49 : 55, L * 0.6); }
       if (s === 4 || s === 12) snare(d, t, L); if (s % 2 === 0) hat(d, t, L * 0.8); } },
   };
-  function performer(kind) {
+  function performer(kind, n = 4) {
     const A = ACTS[kind]; if (!A || act.length >= P.max) return null;
     const p = new PannerNode(ctx, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: X.positional.refDistance, rolloffFactor: X.positional.rolloff, maxDistance: 200, positionZ: -60 });
     const g = ctx.createGain(); g.gain.value = 0; g.gain.setValueAtTime(0, ctx.currentTime); g.gain.linearRampToValueAtTime(1, ctx.currentTime + 1.5);
     let input = g; if (A.speaker) { const hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 85; lp.type = 'lowpass'; lp.frequency.value = 3500; hp.connect(lp).connect(g); input = hp; }
     g.connect(p).connect(out);
-    const h = { kind, A, p, g, input, step: 0, next: ctx.currentTime + 0.1, dt: 60 / A.bpm / 4 * (A.steps === 32 ? 2 : 1) };
+    const h = { kind, A, p, g, input, n, step: 0, next: ctx.currentTime + 0.1, dt: 60 / A.bpm / 4 * (A.steps === 32 ? 2 : 1) };
     act.push(h); return h;
   }
   function place(h, x, z) { if (!h) return; h.p.positionX.value = x; h.p.positionY.value = 1; h.p.positionZ.value = z; }
   function release(h) { const i = act.indexOf(h); if (i < 0) return; act.splice(i, 1); const t = ctx.currentTime; h.g.gain.cancelScheduledValues(t); h.g.gain.setValueAtTime(h.g.gain.value, t); h.g.gain.linearRampToValueAtTime(0, t + 0.3); setTimeout(() => h.p.disconnect(), 1500); }
-  function schedule() { const until = ctx.currentTime + 0.12; for (const h of act) while (h.next < until) { h.A.play(h.input, h.step, h.next); h.step = (h.step + 1) % h.A.steps; h.next += h.dt; } }
+  function schedule() { const until = ctx.currentTime + 0.12; for (const h of act) while (h.next < until) { h.A.play(h.input, h.step, h.next, h); h.step = (h.step + 1) % h.A.steps; h.next += h.dt; } }
 
   // ---------------------------------------------------------------- ambience bed (CC0 files, loaded on first key press)
-  const B = X.ambience, buf = {}, bed = { waves: null, crowd: null, wavesLP: null, mixT: 0, gullT: 0, hornT: 0, barkT: 0, w: null };
+  const B = X.ambience, buf = {}, bed = { waves: null, crowd: null, wavesLP: null, mixT: 0, gullT: 0, barkT: 0, w: null };
   // a seamless loop: the last `xf` s are folded onto the start with an equal-power crossfade, so the seam can't click
   function makeLoop(b, xf) {
     const n = Math.min(Math.floor(xf * b.sampleRate), b.length >> 2), L = b.length - n, o = ctx.createBuffer(1, L, b.sampleRate), s = b.getChannelData(0), d = o.getChannelData(0);
@@ -128,7 +142,7 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     bed.wavesLP = ctx.createBiquadFilter(); bed.wavesLP.type = 'lowpass'; bed.wavesLP.Q.value = 0.5; bed.wavesLP.frequency.value = 1000; bed.wavesLP.connect(amb);
     if (buf.waves) bed.waves = loop(buf.waves, bed.wavesLP);
     if (buf.crowd) bed.crowd = loop(buf.crowd, amb);
-    const now = ctx.currentTime; bed.gullT = now + rand(2, 6); bed.hornT = now + rand(4, 10); bed.barkT = now + rand(15, 40); bed.ready = true;
+    const now = ctx.currentTime; bed.gullT = now + rand(2, 6); bed.barkT = now + rand(15, 40); bed.ready = true;
   }
   function oneShot(b, dest, gain, rate = 1, t = ctx.currentTime) { if (!b || !take('fx', 1)) return; const s = ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; const g = ctx.createGain(); g.gain.value = gain; s.connect(g).connect(dest); s.start(t); s.onended = () => { pools.fx.n--; g.disconnect(); }; }
   // the bed's mix for the current weather: the PHASES row and the next one, blended the way the lighting is
@@ -140,8 +154,6 @@ export function createSfx({ ctx, out, amb, cfg: X, duck }) {
     // gulls: a call or a small group, somewhere to the side, at a rate that depends on the weather
     if (now >= bed.gullT) { if (m.gullsPerMin > 0.05) { const many = Math.random() < 0.35; oneShot(many ? buf.gulls : buf.gull, side(rand(-0.8, 0.8), 3), B.level * B.gulls * rand(0.5, 1), rand(0.9, 1.1)); }
       bed.gullT = now + clamp(-Math.log(1 - Math.random()) * 60 / Math.max(m.gullsPerMin, 0.05), 1.5, 120); }
-    // the foghorn, far off, only in the fog
-    if (now >= bed.hornT) { if (m.foghorn > 0.5) oneShot(buf.foghorn, side(rand(-0.4, 0.4), 9), B.level * B.foghornLevel * m.foghorn); bed.hornT = now + rand(...B.foghornEvery); }
     // a dog somewhere down the beach
     if (now >= bed.barkT) { if (m.barksPerMin > 0.05) { const t = now; oneShot(buf.barkFar, side(rand(-0.9, 0.9), 3), B.level * B.barks, rand(0.9, 1.1), t); if (Math.random() < 0.5) oneShot(buf.barkFar, side(rand(-0.9, 0.9), 3), B.level * B.barks * 0.8, rand(0.9, 1.1), t + rand(0.5, 0.8)); }
       bed.barkT = now + clamp(-Math.log(1 - Math.random()) * 60 / Math.max(m.barksPerMin, 0.05), 8, 180); }

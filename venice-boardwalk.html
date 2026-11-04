@@ -153,7 +153,7 @@
     <h3>Textures from Poly Haven</h3><p>All CC0 · <span class="u">polyhaven.com</span><br>Concrete Floor 03: Rob Tuytel, Matterfield<br>Concrete Tiles: Dimitrios Savva<br>Damaged Concrete Floor: Rob Tuytel<br>Painted Concrete 02: Rob Tuytel<br>Grass Ground: Charlotte Baglioni<br>Dirt Floor: eye-candy.xyz<br>Sand 03: Charlotte Baglioni</p>
     <h3>Music</h3><p id="gMusicCredits"></p>
     <h3>Sound effects</h3><p>Made in code for this game (Web Audio)</p>
-    <h3>Ambience from Freesound</h3><p>All CC0 · <span class="u">freesound.org</span><br>Distant Waves on Beach: bdgdoherty<br>bathing beach atmo: Garuda1982<br>Seagull single call: steaq<br>seagulls-mateo: smedloidian<br>Long Distant Foghorn: Danjocross<br>Single Dog Bark: kwahmah_02<br>Dog Barking Distance - 1: SpaceJoe</p>
+    <h3>Ambience from Freesound</h3><p>All CC0 · <span class="u">freesound.org</span><br>Distant Waves on Beach: bdgdoherty<br>bathing beach atmo: Garuda1982<br>Seagull single call: steaq<br>seagulls-mateo: smedloidian<br>Single Dog Bark: kwahmah_02<br>Dog Barking Distance - 1: SpaceJoe</p>
     <h3>Global leaderboard</h3><p>Hosted on Cloudflare Workers and D1. Scores are stored online with a name, score and date only.</p>
     <h3>Code library</h3><p>three.js r186 · MIT License · <span class="u">threejs.org</span></p>
     <h3>Made in code for this game</h3><p>Buildings, signs, murals, clothing, skateboards, bikes, cars, props, birds, sky and all other procedural art. All business names, tags and ads are invented.</p>
@@ -228,21 +228,21 @@ const GAME = {
            limiter: { threshold: -1 },     // dBFS where the master limiter catches peaks
            duck: { db: 3, attack: 0.05, hold: 0.3, release: 0.6 },   // music dips this many dB (2–4 is gentle) under landed tricks, bails, hits and slips
            sfx: { volume: 0.7,             // default SFX volume ([ / ] change it in 5% steps; saved with the music settings). Ambience follows it too
-                  maxVoices: 28, performers: { max: 2, maxVoices: 24, level: 0.16 },   // voice caps (sounds over the cap are skipped); performers' loudness at 4 m
+                  maxVoices: 28, performers: { max: 3, maxVoices: 40, level: 0.16, circleLevel: 0.32 },   // voice caps (sounds over the cap are skipped); loudness at 4 m of a lane performer / a drum circle off the lanes
                   positional: { refDistance: 4, rolloff: 1.1 },   // PannerNode 'inverse' distance model for bells, dogs, the camera flash and performers
                   roll: { level: 0.05, rumble: 0.08, rumbleHz: 140, hiss: [380, 1500], speedLo: 4, speedHi: 30, jointSpacing: 1.6, jointMaxHz: 22, jointDepth: 0.35 },   // wheels: hiss band (Hz) from speedLo to speedHi m/s, one swell per paving joint
                   charge: { level: 0.035, from: 196, to: 523 },   // the tone while Space is held: Hz at no crouch → full crouch
                   success: { base: 587, maxSteps: 12, level: 0.09 },   // landed-trick chime: Hz at combo 1, +1 semitone per combo step up to maxSteps
                   lowHealth: { every: 1.1, level: 0.16 },   // heartbeat under 30% health: s between beats
                   bell: 0.07, bark: 0.45, jingle: 0.1, sting: { level: 0.15, duckDb: 4, duckHold: 1.4 },   // the game-over sting ducks the music more and for longer
-                  ambience: { folder: 'assets/sfx/', level: 0.55, loopFade: 2, gulls: 0.35, barks: 0.12, foghornLevel: 0.45, foghornEvery: [26, 44],
-                    files: { waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', foghorn: 'foghorn.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
+                  ambience: { folder: 'assets/sfx/', level: 0.55, loopFade: 2, gulls: 0.35, barks: 0.12,
+                    files: { waves: 'amb-waves.mp3', crowd: 'amb-crowd.mp3', gull: 'gull-call.mp3', gulls: 'gulls.mp3', bark: 'dog-bark.mp3', barkFar: 'dog-bark-far.mp3' },
                     // per weather phase, in PHASES order, blended with the lighting: loop levels, waves low-pass (Hz: low = muffled), one-shot rates per minute
                     phases: [
-                      { waves: 0.75, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, foghorn: 1, barksPerMin: 0.8 },     // overcast fog: muffled surf, a far foghorn, few gulls
-                      { waves: 0.6, wavesLP: 12000, crowd: 0.55, gullsPerMin: 7, foghorn: 0, barksPerMin: 1.2 },      // sunny: surf, gulls, a busy crowd
-                      { waves: 0.65, wavesLP: 6000, crowd: 0.3, gullsPerMin: 4, foghorn: 0, barksPerMin: 0.8 },       // golden hour: a softer crowd, surf
-                      { waves: 0.6, wavesLP: 3500, crowd: 0.1, gullsPerMin: 0.6, foghorn: 0, barksPerMin: 0.6 } ] } } },   // blue hour: a quiet crowd, surf
+                      { waves: 0.75, wavesLP: 650, crowd: 0.12, gullsPerMin: 1.5, barksPerMin: 0.8 },     // overcast fog: muffled surf, few gulls
+                      { waves: 0.6, wavesLP: 12000, crowd: 0.55, gullsPerMin: 7, barksPerMin: 1.2 },      // sunny: surf, gulls, a busy crowd
+                      { waves: 0.65, wavesLP: 6000, crowd: 0.3, gullsPerMin: 4, barksPerMin: 0.8 },       // golden hour: a softer crowd, surf
+                      { waves: 0.6, wavesLP: 3500, crowd: 0.1, gullsPerMin: 0.6, barksPerMin: 0.6 } ] } } },   // blue hour: a quiet crowd, surf
   weather: { phaseLen: 60, blend: 8 },     // s each phase lasts, the last `blend` s being the cross-fade into the next
   energy: { max: 100, regen: 6,            // energy per second, always refilling
             ollieMin: 8, ollieMax: 40 },   // cost of a tap ollie / a full-height jump (the trick comes with the height)
@@ -1565,6 +1565,7 @@ class Chunk {
     // grass, a street performer with a small audience, someone filming themselves. Generated last so the
     // rest of the layout keeps its random sequence. minCrowd gates each one by the lighting phase's crowd level.
     const sid = this.index * 977; this.stations = [];
+    if (this.drumCircle) this.drumCircle.gone = true; this.drumCircle = null;   // game.js plays the drum circle's sound from here
     for (const z of benchZ) for (const dz of [-0.45, 0.45]) if (chance(0.55)) this.stations.push({ t: 'sit', x: -6.75, y: 0.52, z: z + dz, ry: Math.PI / 2, seed: sid + 7 + this.stations.length, minCrowd: 0.05 });
     // performers, their audience and selfie-takers sit outside the four play lanes (|x| > 4.3)
     if (this.index % 2 === 1) { const px = chance(0.5) ? -8.6 : 7.6, pz = z0 - rand(8, 32), act = pick(['dance', 'talk', 'spell', 'bboy']), ry = px < 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -1588,7 +1589,8 @@ class Chunk {
         this.stations.push({ t: 'smokeStand', x, y: 0, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 441 + k, minCrowd: 0.05, always: true }); } }
     if (this.index % 3 === 1) { const right = chance(0.5), cx = right ? 6.9 : -10.6, cy = right ? 0 : -0.065, cz = z0 - rand(8, 32), n = randi(4, 6), a0 = rand(0, 6.28);
       for (let k = 0; k < n; k++) { const ang = a0 + k / n * Math.PI * 2, x = cx + Math.sin(ang) * 1.15, z = cz + Math.cos(ang) * 1.15;
-        this.stations.push({ t: 'drum', x, y: cy + SEAT_Y, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 421 + k, minCrowd: 0.05, always: true }); } }
+        this.stations.push({ t: 'drum', x, y: cy + SEAT_Y, z, ry: Math.atan2(cx - x, cz - z), seed: sid + 421 + k, minCrowd: 0.05, always: true }); }
+      this.drumCircle = { x: cx, z: cz, n }; }
     // shoppers browsing in front of the shops (only while the shops are open; kept when the side crowd is thinned)
     for (const p of this.tpl.props) if (p.t === 'front' && chance(0.7)) for (let k = 0, n = randi(1, 3); k < n; k++) {
       const x = p.x - rand(0.35, 1.6), z = z0 + p.z + rand(-0.35, 0.35) * p.w;
@@ -1603,6 +1605,8 @@ class Chunk {
   }
 }
 const chunks = []; for (let i = 0; i < NCH; i++) chunks.push(new Chunk(i));
+// the drum circles in the chunks now laid out ({ x, z, n } in world space; game.js gives each one its hand drums)
+function forDrumCircles(cb) { for (const ch of chunks) if (ch.drumCircle) cb(ch.drumCircle); }
 // shops that put a stand-up sign out, with zFar < z <= zNear (world z), nearest first (game.js places the signs)
 function shopsBetween(zNear, zFar) {
   const out = [];
@@ -2088,7 +2092,7 @@ loadMgr.onLoad = async () => {
   computePhase(); applyPhase(0); updateEnv(); updateChunks(S.z); onResize();
   try { const { createCharacters } = await import('./characters.js'); chars = await createCharacters({ renderer, scene, camera, chunks, skater, S, Q: Q.characters }); for (const k in IMP) IMP[k].visible = false; }
   catch (err) { console.error('[characters] failed to load rigged characters, using block placeholders:', err); }
-  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
+  try { const { createGame } = await import('./game.js'); game = createGame({ scene, S, chars, IM, cfg: GAME, getPhaseName: () => phaseState.name, phase: phaseState, shopsBetween, forDrumCircles, drawLeaf, onFirstRun: () => { cycleT = 0; }, phaseNow: computePhase }); }   // onFirstRun: the first run starts in the overcast fog
   catch (err) { console.error('[game] failed to start:', err); }
   document.getElementById('loading').style.opacity = 0; setTimeout(() => document.getElementById('loading').remove(), 700);
   if (fallbacksUsed.length) console.warn('Canvas fallbacks used for:', fallbacksUsed);

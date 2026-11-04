@@ -38,8 +38,8 @@ Sound effects are synthesized in code (`sfx.js`): wheels that follow your speed,
 (the same for every trick), the landing, a chime that climbs with the combo when a trick lands, the bail, hits, slips,
 close calls, a soft heartbeat under 30% health, menu clicks, the game-over sting and a jingle when you make the top 5.
 Holding Space plays a quiet tone that rises with the crouch. Cyclists' bells, barking dogs, the influencer's camera and
-the performers' music are placed where they are (Web Audio PannerNode). Under it all, an ambience bed of surf, gulls,
-crowd, a far foghorn and dogs (small CC0 recordings in `assets/sfx/`, loaded after the first key press) changes with the
+the performers' music and the hand drums of the drum circles beside the boardwalk are placed where they are (Web Audio PannerNode). Under it all, an ambience bed of surf, gulls,
+crowd and dogs (small CC0 recordings in `assets/sfx/`, loaded after the first key press) changes with the
 weather. The music dips 3 dB under landed tricks, bails, hits and slips, and 4 dB under the game-over sting.
 
 Tricks: ↑ kickflip · ↓ heelflip · ↑↑ 360 flip · ↓↓ impossible · ↑↓ or ↓↑ hardflip (hidden bonus). Each needs a minimum jump height
@@ -131,7 +131,7 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   Pausing fades everything out, then suspends the AudioContext.
 - `sfx.js` — the sound effects (Web Audio synthesis, capped voices, positional sounds) and the ambience bed, mixed per
   weather phase (`GAME.audio.sfx` in the HTML holds every level and the per-phase mix).
-- `assets/sfx/` — the ambience recordings: mono 64 kbps MP3s, about 720 KB in all (sources in `CREDITS.md`).
+- `assets/sfx/` — the ambience recordings: mono 64 kbps MP3s, about 660 KB in all (sources in `CREDITS.md`).
 - `icon.svg`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
   (Open Graph / X card tags in both HTML pages).
 - `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).

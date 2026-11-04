@@ -738,6 +738,8 @@ export function createGame(ctx) {
   // Main update
   // -------------------------------------------------------------------------------------
   let hudT = 0;
+  const circles = [];   // drum circles with a sound playing
+  function drumCircleSound(c) { const dz = S.z - c.z; if (!c.snd && !c.gone && dz < 60 && dz > -20) { c.snd = audio.fx.performer('drumCircle', c.n); if (c.snd) circles.push(c); } }
   function apexIfReleased() { let f = chargeFrac(); if (st.mode === 'playing') f = Math.min(f, clamp((st.energy - EN.ollieMin) / (EN.ollieMax - EN.ollieMin), 0, 1)); return lerp(J.minHeight, J.maxHeight, f); }
   function drawDebugOverlay() {
     ui.dbg.style.display = dbgOn ? 'block' : 'none'; if (!dbgOn) return;
@@ -770,6 +772,10 @@ export function createGame(ctx) {
     const lean = updateSkater(dt);
     S.x = sk.x; S.camRoll = lean * L.camRoll;
     writePose(lean);
+    // drum circles (scenery off the lanes): hand drums from where the circle sits, while it's near
+    if (ctx.forDrumCircles) ctx.forDrumCircles(drumCircleSound);
+    for (let i = circles.length - 1; i >= 0; i--) { const c = circles[i], dz = S.z - c.z;
+      if (c.gone || dz < -30 || dz > 70) { audio.fx.release(c.snd); c.snd = null; circles.splice(i, 1); } else audio.fx.place(c.snd, c.x - sk.x, c.z - S.z); }
     // continuous sounds: wheels while on the board, the charge tone, the low-health heartbeat, the weather's ambience
     audio.fx.frame(dt, sk.speed, (grounded() || sk.mode === 'charge') && st.mode !== 'over', sk.mode === 'charge' && st.mode === 'playing' ? chargeFrac() : -1,
       st.mode === 'playing' && st.health > 0 && st.health < HP.max * 0.3, ctx.phase ? ctx.phase.i ?? 0 : 1, ctx.phase ? ctx.phase.blend || 0 : 0);
