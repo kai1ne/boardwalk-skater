@@ -11,6 +11,7 @@
 // =====================================================================================
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
@@ -225,7 +226,8 @@ export const CHARACTER_FILES = 7 + HAIR_FILES.length;
 let assetsP = null;
 export function preloadCharacters(onItem) {
   if (assetsP) return assetsP;
-  const loader = new GLTFLoader(), texLoader = new THREE.TextureLoader();
+  // the models are EXT_meshopt_compression (filter mode: attributes decode bit-exact to the float data)
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder), texLoader = new THREE.TextureLoader();
   const tick = (p) => p.then((v) => { if (onItem) onItem(); return v; });
   const load = (u) => tick(loader.loadAsync(BASE + u));
   const loadTex = (u) => tick(texLoader.loadAsync(BASE + u).then((t) => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; return t; }));

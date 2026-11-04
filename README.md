@@ -141,6 +141,10 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
   the PNG logos, the character JPGs and the untrimmed GLBs (the animation library with all 43 clips, the dogs with all
   their clips). The shipped `UAL1_Standard.glb` keeps only the 12 clips the crowd uses, and only the tracks
   `characters.js` reads (bone rotations and the pelvis position); the dogs keep Walk and Idle.
+- Models (`assets/characters/**/*.gltf|.bin|.glb`) are compressed with `EXT_meshopt_compression` in filter mode
+  (glTF-Transform; vertex streams kept separate, attributes decode to exactly the original floats). `characters.js`
+  hands `GLTFLoader` three's `MeshoptDecoder`. To re-encode an edited model, run glTF-Transform on the uncompressed
+  file with `EXTMeshoptCompression` (method FILTER) and `VertexLayout.SEPARATE`.
 
 ## Adding a music track
 
@@ -177,8 +181,9 @@ A track that fails to load is skipped (one warning in the console), and the game
   texture and character file finishes (textures ≈60%, characters ≈25%, then building the crowd). The character files
   and `game.js` start downloading alongside the textures (`preloadCharacters()` in `characters.js`). Space starts a
   run once everything the title scene shows has loaded. The Game Over, Paused and Credits logos load after that
-  (`data-src`), and the audio still starts on the first key press. First load is about 8.7 MB (gzip, as GitHub Pages
-  serves it); `__vb.loadTimes` gives the title and playable times of the current page load.
+  (`data-src`), and the audio still starts on the first key press. First load is about 7.9 MB (gzip, as GitHub Pages
+  serves it). three.js comes from jsDelivr's minified builds: the importmap points `three` at `three.module.min.js`
+  and remaps the `three.core.js` it imports to `three.core.min.js`; `__vb.loadTimes` gives the title and playable times of the current page load.
 
 ## People (characters.js)
 
