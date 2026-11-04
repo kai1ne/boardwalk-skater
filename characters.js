@@ -817,7 +817,7 @@ export async function createCharacters(ctx) {
   }
 
   // ---------------- procedural overrides (run after mixer.update) ----------------
-  const _t = new V3(), _p = new V3(), _h = new V3(), _f = new V3(), _r = new V3(), _u = new V3(0, 1, 0), _d = new V3(), _u0 = new V3(0, 1, 0);
+  const _t = new V3(), _t2 = new V3(), _p = new V3(), _h = new V3(), _f = new V3(), _r = new V3(), _u = new V3(0, 1, 0), _d = new V3(), _u0 = new V3(0, 1, 0);
   function selfie(r, t) {
     const B = r.bones; r.wrap.updateMatrixWorld(true);
     r.wrap.getWorldQuaternion(_q); _f.set(0, 0, 1).applyQuaternion(_q); _r.set(-1, 0, 0).applyQuaternion(_q);
@@ -1023,15 +1023,19 @@ export async function createCharacters(ctx) {
     const flipping = !!P.flipping;
     sk.deck.updateMatrixWorld(true); sk.deck.getWorldQuaternion(_wq);
     const fh = calib.M.footH * 0.92;
-    if (off < 0.999) for (const n of ['l', 'r']) {
+    // stepping off (slip, bail: P.plant): the feet land flat on the ground where they stood on the deck instead of
+    // dangling in the clip pose, which the dropped, leaning body pushed through the floor
+    const plant = P.plant ? off : 0;
+    if (off < 0.999 || plant) for (const n of ['l', 'r']) {
       const front = (n === 'l') === (st >= 0);   // the left foot leads in regular stance, the right in switch
       _t.set(-0.035 * st, DECK_TOP - 0.083 + fh + lift, (front ? -0.19 : 0.22) * Math.abs(st));
       if (flipping) { _t.y += 0.083; _t.applyEuler(_e.set(pitch, 0, 0)); _t.y += board.position.y; skater.localToWorld(_t); }
       else sk.deck.localToWorld(_t);
       if (front && flick) _t.addScaledVector(_r, flick * 0.16 * (P.flickDir || 1) * st).addScaledVector(_f, flick * 0.06).addScaledVector(_u, flick * 0.06);
+      if (plant) { _t2.set(-0.035 * st, fh, (front ? -0.24 : 0.26) * Math.abs(st)); skater.localToWorld(_t2); _t.lerp(_t2, plant); }
       _p.copy(_r).multiplyScalar(0.8 * st).addScaledVector(_f, front ? 0.5 : -0.5);
-      ik2(B['thigh_' + n], B['calf_' + n], B['foot_' + n], _t, _p, 1 - off);
-      if (off < 0.01) { _tmpQ.copy(flipping ? _bw : _wq).multiply(_stQ).multiply(_footRel['foot_' + n]); setWorldQ(B['foot_' + n], _tmpQ); }
+      ik2(B['thigh_' + n], B['calf_' + n], B['foot_' + n], _t, _p, plant ? 1 : 1 - off);
+      if (off < 0.01 || plant) { _tmpQ.copy(flipping ? _bw : _wq); if (plant) _tmpQ.slerp(_bw, plant); _tmpQ.multiply(_stQ).multiply(_footRel['foot_' + n]); setWorldQ(B['foot_' + n], _tmpQ); }
     }
   }
   const _X = new V3(1, 0, 0), _rq2 = new QT(), _UP = new V3(0, 1, 0), _wq2 = new QT(), _stQ = new QT();

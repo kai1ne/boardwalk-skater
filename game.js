@@ -595,9 +595,9 @@ export function createGame(ctx) {
       case 'land': P.crouch = lerp(0.45 + 0.25 * sk.jumpF, 0, smooth(0, 1, sk.t / J.landTime)); break;
       case 'slip': { const u = clamp(sk.t / H.slipTime, 0, 1), e = Math.sin(u * Math.PI);
         P.boardZ = -0.85 * Math.sin(Math.min(1, u * 1.3) * Math.PI); P.boardYaw = 0.8 * e; P.bodyPitch = 0.42 * e; P.crouch = 0.35 * e; P.flail = e;
-        P.offBoard = smooth(0, 0.12, u) * (1 - smooth(0.7, 0.95, u)); break; }
+        P.offBoard = smooth(0, 0.12, u) * (1 - smooth(0.7, 0.95, u)); P.plant = true; break; }
       case 'bail': { const u = clamp(sk.t / H.bailTime, 0, 1), e = Math.sin(u * Math.PI);
-        P.bodyPitch = -0.55 * e; P.boardYaw = -1.1 * e; P.boardZ = -0.5 * e; P.roll = 0.8 * e; P.crouch = 0.5 * e; P.flail = e; P.offBoard = smooth(0, 0.1, u) * (1 - smooth(0.7, 0.95, u)); break; }
+        P.bodyPitch = -0.55 * e; P.boardYaw = -1.1 * e; P.boardZ = -0.5 * e; P.roll = 0.8 * e; P.crouch = 0.5 * e; P.flail = e; P.offBoard = smooth(0, 0.1, u) * (1 - smooth(0.7, 0.95, u)); P.plant = true; break; }
       case 'crash': { const u = smooth(0, 0.55, sk.t);
         P.bodyPitch = -1.2 * u; P.crouch = 0.55 * u; P.boardZ = -2.2 * u; P.boardYaw = 2.4 * u; P.roll = 0.5 * u; P.flail = 1 - u; P.offBoard = 1; break; }
     }
