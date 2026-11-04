@@ -135,7 +135,12 @@ lands on lamp tops, trash cans, benches, palm crowns and roofs, then flies off a
 - `icon.png`, `favicon.ico`, `apple-touch-icon.png` — the favicon; `assets/ui/share.jpg` — the 1200×630 link-preview image
   (Open Graph / X card tags in both HTML pages).
 - `assets/music/` — the background music (MP3s, listed in `MUSIC_TRACKS` at the top of `game.js`).
-- `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K (about 11 MB; see `CREDITS.md`).
+- `textures/<asset_id>/` — Poly Haven CC0 maps, shipped at 1K as WebP (about 5.8 MB; see `CREDITS.md`). Only the maps
+  the scene uses ship.
+- `assets-originals/` (gitignored, local only) — the unprocessed originals of the optimised assets: the 1K JPG textures,
+  the PNG logos, the character JPGs and the untrimmed GLBs (the animation library with all 43 clips, the dogs with all
+  their clips). The shipped `UAL1_Standard.glb` keeps only the 12 clips the crowd uses, and only the tracks
+  `characters.js` reads (bone rotations and the pelvis position); the dogs keep Walk and Idle.
 
 ## Adding a music track
 

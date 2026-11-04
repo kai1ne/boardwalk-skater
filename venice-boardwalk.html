@@ -130,11 +130,11 @@
 <div id="ghud"><div class="tl"><div class="lbl" id="gScoreLbl">SCORE</div><div class="scoreRow"><div id="gScore">0</div><div id="gAdd"></div></div><div id="gCombo"></div></div>
   <div class="tr"><div class="meter"><span class="lbl">HEALTH</span><div class="bar" id="gHealthBar"><div id="gHealth"></div></div></div>
     <div class="meter"><span class="lbl">ENERGY</span><div class="bar" id="gEnergyBar"><div id="gEnergy"></div><div id="gEnergyCost"></div></div></div><div id="gDist">0 ft</div><div id="gPhase"></div></div><div id="gPops"></div><pre id="gDbg"></pre></div>
-<div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.png" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
+<div id="gTitle" class="screen"><div class="card"><h1><img class="logo" src="assets/ui/title-logo.webp" alt="Boardwalk Skater"></h1><div class="sub">Skate the boardwalk. Dodge the crowd. Land your tricks.</div>
   <div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div>
   <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gScores"></ol><div class="lbnote" id="gLbNote"></div></div>
   <div class="go">Press Space to start</div><button class="btn" id="gCreditsBtn" tabindex="-1">Credits</button><div class="credit">Made by Calvin Bak</div></div></div>
-<div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.png" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
+<div id="gOver" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/gameover-logo.webp" alt="Game Over"></h1><div class="nb" id="gNewBest">New best!</div><div class="big" id="gOverScore">0</div>
   <div class="best">Your best: <span id="gOverBest">0</span></div>
   <div class="entry" id="gEntry"><div class="nb">Global top 5! Enter your name</div><input id="gName" autocomplete="off" spellcheck="false" placeholder="NAME"><div class="hint" id="gEntryHint">3 to 10 letters or numbers · Enter to submit</div></div>
   <div class="hs"><div class="hsT">GLOBAL TOP 5</div><ol id="gOverScores"></ol><div class="lbnote" id="gOverLbNote"></div></div>
@@ -142,7 +142,7 @@
   <div class="disc" id="gDisc"></div><div class="note" id="gStoreNote">Your best and discovered tricks can't be saved in this browser</div>
   <div class="go" id="gOverGo">Press Enter or Space to skate again</div></div></div>
 <div id="gCredits" class="screen"><div class="card">
-  <h1><img class="logo over cr" src="assets/ui/credits-logo.png" alt="Credits"></h1>
+  <h1><img class="logo over cr" src="assets/ui/credits-logo.webp" alt="Credits"></h1>
   <div class="roll" id="gCreditsRoll">
     <h3>Game</h3><p>Made by Calvin Bak</p>
     <h3>Title, Game Over, Paused and Credits logos</h3><p>AI-generated images</p>
@@ -160,7 +160,7 @@
   </div>
   <button class="btn" id="gCreditsClose" tabindex="-1">Close</button>
 </div></div>
-<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/paused-logo.png" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
+<div id="gPause" class="screen"><div class="card"><h1><img class="logo over" src="assets/ui/paused-logo.webp" alt="Paused"></h1><div class="hsT">CONTROLS</div><div class="keys"><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></div><div class="go">Press Enter, Space or Esc to resume</div></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -426,12 +426,13 @@ function loadTex(path, { srgb = false, fallback }) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-// photo textures ship at 1K (downscaled from Poly Haven's 2K): ≈11 MB, and indistinguishable from the chase camera
-const TEX_RES = '1k';
-function pbr(id, { ao = true, rough = true, col = '#888888' } = {}) {
-  const p = `textures/${id}/${id}_`, r = `_${TEX_RES}.jpg`;
+// photo textures ship at 1K (downscaled from Poly Haven's 2K) as WebP: ≈5.8 MB, and indistinguishable from the 1K JPGs
+// (≈11 MB) from the chase camera. Roughness and AO stay at 1K too: at 512 the concrete grain visibly softens up close.
+// The unprocessed originals are kept out of the repo (assets-originals/, gitignored)
+function pbr(id, { diff = true, ao = true, rough = true, col = '#888888' } = {}) {
+  const p = `textures/${id}/${id}_`, r = '.webp';
   return {
-    diff: loadTex(p + 'diff' + r, { srgb: true, fallback: () => solidCanvas(col, 60) }),
+    diff: diff ? loadTex(p + 'diff' + r, { srgb: true, fallback: () => solidCanvas(col, 60) }) : null,
     nor: loadTex(p + 'nor_gl' + r, { fallback: () => solidCanvas('#8080ff') }),
     rough: rough ? loadTex(p + 'rough' + r, { fallback: () => solidCanvas('#d8d8d8') }) : null,
     ao: ao ? loadTex(p + 'ao' + r, { fallback: () => solidCanvas('#ffffff') }) : null,
@@ -441,7 +442,7 @@ const TX = {
   board: pbr('concrete_floor_03', { col: '#8a8780' }),
   paver: pbr('concrete_tiles', { col: '#a9a7a2' }),
   dmg: pbr('damaged_concrete_floor', { ao: false, rough: false, col: '#7e7b75' }),
-  paint: pbr('painted_concrete_02', { ao: false, col: '#cfcbc4' }),
+  paint: pbr('painted_concrete_02', { diff: false, ao: false, col: '#cfcbc4' }),   // only its normal and roughness maps are used (walls, benches)
   grass: pbr('grass_ground', { ao: false, col: '#6f7448' }),
   dirt: pbr('dirt_floor', { ao: false, col: '#7a6a55' }),
   sand: pbr('sand_03', { ao: false, col: '#c9b796' }),   // coast_sand_04 also downloaded; sand_03 matched Venice's pale trampled sand better

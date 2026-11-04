@@ -228,7 +228,7 @@ export async function createCharacters(ctx) {
   const [gM, gF, gA, gShiba, gHusky, texML, texFL, ...gHair] = await Promise.all([
     load('Superhero_Male_FullBody.gltf'), load('Superhero_Female_FullBody.gltf'), load('UAL1_Standard.glb'),
     load('dogs/Shiba_Inu.glb'), load('dogs/Husky.glb'),
-    loadTex('tex/T_Superhero_Male_Light.jpg'), loadTex('tex/T_Superhero_Female_Light_BaseColor.jpg'),
+    loadTex('tex/T_Superhero_Male_Light.webp'), loadTex('tex/T_Superhero_Female_Light_BaseColor.webp'),
     ...HAIR_FILES.map((h) => load(`hair/${h}.gltf`))]);
   const clipNames = gA.animations.map((c) => c.name);
   console.log('[characters] Universal Animation Library clips (%d):', clipNames.length, clipNames.join(', '));

@@ -12,3 +12,6 @@ server/.wrangler/
 
 # full-quality music originals (the game ships compressed copies in assets/music/)
 music-originals/
+
+# unprocessed originals of the optimised assets (textures, logos, character textures, trimmed GLBs); not loaded by the game
+assets-originals/
