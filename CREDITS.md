@@ -72,7 +72,7 @@ licence requires.
 
 `assets/ui/title-logo.png`, `assets/ui/gameover-logo.png`, `assets/ui/paused-logo.png` and `assets/ui/credits-logo.png` are AI-generated images supplied by Calvin Bak.
 The share preview image (`assets/ui/share.jpg`) is that title logo over a screenshot of the game. The favicon
-(`icon.png`, `favicon.ico`, `apple-touch-icon.png`) is a white bird-poop splat on grey, an image supplied by the game's author.
+(`icon.png`, `favicon.ico`, `apple-touch-icon.png`) is a purple skateboard on a yellow paint splash over grey cement, an image supplied by the game's author.
 
 ## Music
 
