@@ -1,7 +1,7 @@
 // Server-side rules for the Boardwalk Skater leaderboard. Everything here is public (it ships in the repo); secrets
 // (the run-token HMAC key, the IP-hash salt, the admin secret) live only in Cloudflare's secret store / .dev.vars.
 
-export const ALLOWED_ORIGINS = ['https://kai1ne.github.io'];   // plus any http://localhost:<port> / http://127.0.0.1:<port> for development
+export const ALLOWED_ORIGINS = ['https://kai1ne.github.io', 'https://boardwalk-skater.boardwalk-skater-leaderboard.workers.dev']; // plus any http://localhost:<port> / http://127.0.0.1:<port> for development
 
 export const RUN = {
   maxAgeSec: 30 * 60,          // a run token expires 30 min after /start (longer runs can't post)
