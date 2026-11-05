@@ -32,9 +32,9 @@ Errors come back as `{ error: "<code>", message }` with a 4xx/5xx status.
   two hours. Requests carrying the admin secret skip this (for testing).
 - **Daily write cap:** 30,000 write operations per UTC day, then writes stop with `503 daily_limit` until midnight UTC,
   well before the D1 free tier's 100,000 rows written a day. Reading the board keeps working.
-- **CORS:** only `https://kai1ne.github.io`, `https://boardwalk-skater.boardwalk-skater-leaderboard.workers.dev` and
-  `http://localhost:<port>` may call it from a browser; other origins get `403`. (CORS only binds browsers; scripts
-  are covered by the token, limits and score checks.)
+- **CORS:** only `https://kai1ne.github.io`, `https://boardwalk-skater.boardwalk-skater-leaderboard.workers.dev`,
+  `https://boardwalk-skater.pages.dev` and `http://localhost:<port>` may call it from a browser; other origins get
+  `403`. (CORS only binds browsers; scripts are covered by the token, limits and score checks.)
 - **Stored:** name, score, time and game version per score, top 100 rows only. Rejected submissions are counted by day
   and reason (no names, scores or IPs) and also printed to the Workers logs.
 
