@@ -40,7 +40,7 @@ export function createGame(ctx) {
   // sound effects: audio.fx (sfx.js), silent no-ops until the first key press
   const ui = { hud: $('ghud'), score: $('gScore'), add: $('gAdd'), combo: $('gCombo'), dist: $('gDist'), pops: $('gPops'),
     health: $('gHealth'), healthBar: $('gHealthBar'), energy: $('gEnergy'), energyCost: $('gEnergyCost'), energyBar: $('gEnergyBar'),
-    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], lbNotes: [$('gLbNote'), $('gOverLbNote')], lbMsg: $('gLbMsg'), lbRetry: $('gLbRetry'), entryHint: $('gEntryHint'), newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
+    title: $('gTitle'), over: $('gOver'), pause: $('gPause'), overScore: $('gOverScore'), overBest: $('gOverBest'), scores: [$('gScores'), $('gOverScores')], lbNotes: [$('gLbNote'), $('gOverLbNote')], plays: [$('gPlays'), $('gOverPlays')], lbMsg: $('gLbMsg'), lbRetry: $('gLbRetry'), entryHint: $('gEntryHint'), newBest: $('gNewBest'), disc: $('gDisc'), storeNote: $('gStoreNote'), dbg: $('gDbg'), phase: $('gPhase'), credits: $('gCredits'), roll: $('gCreditsRoll'), entry: $('gEntry'), name: $('gName'), overGo: $('gOverGo') };
 
   // saved game (this browser only): tricks discovered, hints shown, your best score and the last name entered, in
   // localStorage under a versioned key. Bad or missing data starts fresh; if storage is blocked it all lives in memory for
@@ -66,7 +66,7 @@ export function createGame(ctx) {
   // ---- global top 5: fetched on the title screen and at game over (5 s timeout, one retry); the last good board is
   // cached and shown as "offline: last known" when the server can't be reached. Nothing is ever queued for later.
   const LB = G.leaderboard, lb = { board: null, status: 'loading', token: null, tokenFailed: false, run: 0, phase: 'idle', tries: 0, mine: null };
-  try { const c = JSON.parse(localStorage.getItem(LB.cacheKey) || 'null'); if (c && Array.isArray(c.top5)) lb.cached = c.top5.filter((r) => r && typeof r.name === 'string' && Number.isInteger(r.score)).slice(0, 5); } catch (e) { /* no cache */ }
+  try { const c = JSON.parse(localStorage.getItem(LB.cacheKey) || 'null'); if (c && Array.isArray(c.top5)) lb.cached = c.top5.filter((r) => r && typeof r.name === 'string' && Number.isInteger(r.score)).slice(0, 5); if (c && Number.isInteger(c.plays)) lb.plays = c.plays; } catch (e) { /* no cache */ }
   async function lbCall(path, body) {   // → the JSON on success, { error, status } for a refusal, null if unreachable
     for (let attempt = 0; attempt < 2; attempt++) {
       const ac = new AbortController(), timer = setTimeout(() => ac.abort(), LB.timeoutMs);
@@ -82,7 +82,7 @@ export function createGame(ctx) {
   async function refreshBoard() {
     lb.status = 'loading'; renderBoard();
     const d = await lbCall('/top5');
-    if (d && Array.isArray(d.top5)) { lb.board = lb.cached = d.top5.slice(0, 5); lb.status = 'live'; try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, at: Date.now() })); } catch (e) { /* no cache */ } }
+    if (d && Array.isArray(d.top5)) { lb.board = lb.cached = d.top5.slice(0, 5); if (Number.isInteger(d.plays)) lb.plays = d.plays; lb.status = 'live'; try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, plays: lb.plays, at: Date.now() })); } catch (e) { /* no cache */ } }
     else { lb.board = lb.cached || null; lb.status = lb.board ? 'cached' : 'offline'; }
     renderBoard(); return lb.status;
   }
@@ -94,6 +94,8 @@ export function createGame(ctx) {
         for (const [c, t] of [['r', i + 1], ['n', r ? r.name : '—'], ['s', r ? r.score.toLocaleString() : '']]) { const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp); }
         ol.appendChild(li); } }
     for (const n of ui.lbNotes) n.textContent = note;
+    const p = Number.isInteger(lb.plays) && lb.plays > 0 && lb.status !== 'offline' ? `${lb.plays.toLocaleString()} ${lb.plays === 1 ? 'game' : 'games'} played` : '';
+    for (const n of ui.plays) n.textContent = p;   // the public count of games started (server: each run token)
   }
   const qualifies = (n) => n > 0 && lb.board && (lb.board.length < 5 || n > lb.board[lb.board.length - 1].score);
   function lbMessage(text, retry) { ui.lbMsg.textContent = text || ''; ui.lbMsg.style.display = text ? 'block' : 'none'; ui.lbRetry.style.display = retry ? 'block' : 'none'; }
@@ -119,7 +121,7 @@ export function createGame(ctx) {
     entering = false; ui.name.blur(); lb.phase = 'sending'; lbMessage('Submitting…'); showScreens();
     const d = await lbCall('/score', { token: lb.token, name, score: st.score, distance: Math.round(st.dist * 3.28084), trickCounts: st.trickCounts, claimedDurationSec: Math.round(st.playT * 10) / 10, gameVersion: GAME_VERSION });
     if (run !== lb.run) return;
-    if (d && d.ok) { lb.mine = d.qualified ? { name, score: st.score } : null; lb.board = lb.cached = d.top5.slice(0, 5); try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, at: Date.now() })); } catch (e) { /* no cache */ } lb.status = 'live'; lb.phase = 'done'; lbMessage(d.qualified ? '' : 'Just missed the top 5'); renderBoard(); return; }
+    if (d && d.ok) { lb.mine = d.qualified ? { name, score: st.score } : null; lb.board = lb.cached = d.top5.slice(0, 5); try { localStorage.setItem(LB.cacheKey, JSON.stringify({ top5: lb.board, plays: lb.plays, at: Date.now() })); } catch (e) { /* no cache */ } lb.status = 'live'; lb.phase = 'done'; lbMessage(d.qualified ? '' : 'Just missed the top 5'); renderBoard(); return; }
     if (d && (d.error === 'name_blocked' || d.error === 'name_length' || d.error === 'name_chars')) {   // the token isn't used up: pick another name
       lb.phase = 'asking'; entering = true; lbMessage(''); ui.entryHint.textContent = d.error === 'name_blocked' ? 'Please choose a different name' : 'Names need 3 to 10 letters or numbers'; showScreens(); return; }
     if (d && d.error === 'token_used') { lb.phase = 'done'; lbMessage(''); refreshBoard(); return; }   // it went through after all

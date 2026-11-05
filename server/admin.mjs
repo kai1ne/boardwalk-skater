@@ -2,6 +2,7 @@
 //   node admin.mjs list            every stored entry (id, name, score, date, version)
 //   node admin.mjs delete <id>     remove one entry
 //   node admin.mjs clear           remove every entry (asks you to type CLEAR)
+//   node admin.mjs plays           games played: the total and a count per day
 //   node admin.mjs rejects         rejected submissions by day and reason (no personal data)
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
@@ -19,5 +20,6 @@ else if (cmd === 'clear') {
   const rl = createInterface({ input: process.stdin, output: process.stdout }); const a = await rl.question('Type CLEAR to delete every entry: '); rl.close();
   if (a.trim() !== 'CLEAR') { console.log('Cancelled'); process.exit(0); } console.log(await call('POST', '/clear', { confirm: 'CLEAR' }));
 }
+else if (cmd === 'plays') { const { total, days } = await call('GET', '/plays'); console.table(days); console.log(`${total} games played`); }
 else if (cmd === 'rejects') console.table((await call('GET', '/rejects')).rejects);
-else { console.log('usage: node admin.mjs list | delete <id> | clear | rejects'); process.exit(1); }
+else { console.log('usage: node admin.mjs list | delete <id> | clear | plays | rejects'); process.exit(1); }

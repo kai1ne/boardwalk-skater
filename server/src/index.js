@@ -1,6 +1,6 @@
 // Boardwalk Skater global leaderboard: a Cloudflare Worker with a D1 database.
-//   GET  /top5    the all-time top 5 { top5: [{ name, score, date }] }, cached a few seconds
-//   POST /start   a signed run token { runId, startedAt, signature }
+//   GET  /top5    the all-time top 5 and how many games have been played { top5: [{ name, score, date }], plays }, cached a few seconds
+//   POST /start   a signed run token { runId, startedAt, signature }; each one counts as a game played
 //   POST /score   { token, name, score, distance, trickCounts, claimedDurationSec, gameVersion } → { ok, qualified, top5 }
 //   /admin/...    list / delete / clear, with the admin secret (see README)
 // Secrets (Cloudflare secret store, or .dev.vars for local dev): RUN_SECRET (signs run tokens), IP_SALT (hashes client
@@ -59,7 +59,7 @@ async function logReject(env, endpoint, code) {
 }
 
 // ---- the board
-let cache = null;   // { at, rows }: per Worker instance (the Cache API isn't available on workers.dev)
+let cache = null;   // { at, rows, plays }: per Worker instance (the Cache API isn't available on workers.dev)
 async function readTop(env, n) {
   const { results } = await env.DB.prepare('SELECT id, name, score, created_at FROM scores ORDER BY score DESC, created_at ASC LIMIT ?').bind(n).all();
   return results;
@@ -67,7 +67,17 @@ async function readTop(env, n) {
 async function top5(env) {
   if (cache && Date.now() - cache.at < LIMITS.top5CacheMs) return cache.rows;
   const rows = (await readTop(env, LIMITS.boardSize)).map((r) => ({ name: r.name, score: r.score, date: new Date(r.created_at).toISOString() }));
-  cache = { at: Date.now(), rows }; return rows;
+  cache = { at: Date.now(), rows, plays: await playsTotal(env) }; return rows;
+}
+
+// ---- games played: one counter row per UTC day (no personal data), summed for the public total
+async function playsTotal(env) {
+  try { return (await env.DB.prepare('SELECT COALESCE(SUM(count), 0) AS n FROM plays').first())?.n ?? null; }
+  catch (e) { console.error('plays read failed', e); return null; }   // e.g. the plays table hasn't been created yet
+}
+async function countPlay(env) {
+  try { await env.DB.prepare('INSERT INTO plays (day, count) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET count = count + 1').bind(utcDay()).run(); }
+  catch (e) { console.error('plays count failed', e); }   // never costs the player their run token
 }
 
 // the furthest a clean run can get in t seconds: start speed ramping to top speed (config.js SPEED), in feet
@@ -78,8 +88,9 @@ function maxDistanceFt(t) {
 
 async function start(env, request) {
   const key = await rateLimit(env, request, 'start', LIMITS.startsPerHour);
-  if (!(await spendWrites(env, 2))) throw busy();
+  if (!(await spendWrites(env, key ? 3 : 2))) throw busy();
   await rateBump(env, key);
+  if (key) await countPlay(env);   // admin-keyed test runs don't count as games played
   const runId = crypto.randomUUID(), startedAt = Date.now();
   return { runId, startedAt, signature: await hmac(env.RUN_SECRET, `${runId}.${startedAt}`) };
 }
@@ -136,6 +147,7 @@ async function admin(env, request, path) {
   const m = request.method;
   if (m === 'GET' && path === '/entries') return { entries: (await env.DB.prepare('SELECT id, name, score, created_at, game_version FROM scores ORDER BY score DESC, created_at ASC').all()).results };
   if (m === 'GET' && path === '/health') return { clientIpHeader: !!request.headers.get('CF-Connecting-IP'), today: utcDay(), writesToday: (await env.DB.prepare('SELECT writes FROM daily WHERE day = ?').bind(utcDay()).first())?.writes ?? 0, cap: LIMITS.dailyWriteCap };
+  if (m === 'GET' && path === '/plays') return { total: await playsTotal(env), days: (await env.DB.prepare('SELECT day, count FROM plays ORDER BY day DESC LIMIT 400').all()).results };
   if (m === 'GET' && path === '/rejects') return { rejects: (await env.DB.prepare('SELECT day, endpoint, reason, count FROM rejects ORDER BY day DESC, count DESC LIMIT 200').all()).results };
   const del = path.match(/^\/entries\/(\d+)$/);
   if (m === 'DELETE' && del) { const r = await env.DB.prepare('DELETE FROM scores WHERE id = ?').bind(Number(del[1])).run(); cache = null; return { deleted: r.meta.changes }; }
@@ -157,7 +169,7 @@ export default {
     try {
       if (!originOK(origin)) throw new Reject(403, 'origin_not_allowed', 'This site may not use the leaderboard', false);
       if (url.pathname.startsWith(ADMIN_PREFIX + '/')) return json(await admin(env, request, url.pathname.slice(ADMIN_PREFIX.length)));
-      if (request.method === 'GET' && url.pathname === '/top5') return json({ top5: await top5(env) }, 200, { ...cors, 'cache-control': 'public, max-age=5' });
+      if (request.method === 'GET' && url.pathname === '/top5') { const rows = await top5(env); return json({ top5: rows, plays: cache?.plays ?? null }, 200, { ...cors, 'cache-control': 'public, max-age=5' }); }
       if (request.method === 'POST' && url.pathname === '/start') return json(await start(env, request), 200, cors);
       if (request.method === 'POST' && url.pathname === '/score') return json(await score(env, request), 200, cors);
       throw new Reject(404, 'not_found', 'No such endpoint', false);
